@@ -22,7 +22,7 @@ object LogExporter {
         if (!dir.exists()) dir.mkdirs()
         val target = File(dir, "yunx_log_${timestamp()}.txt")
         val header = buildString {
-            appendLine("YunX PC 运行日志")
+            appendLine("云析 YunX-Desktop 运行日志")
             appendLine("时间: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}")
             appendLine("系统: ${System.getProperty("os.name")} ${System.getProperty("os.version")}")
             appendLine("Java: ${System.getProperty("java.version")}")
@@ -46,7 +46,7 @@ object LogExporter {
         if (!dir.exists()) dir.mkdirs()
         val target = File(dir, "yunx_log_${timestamp()}.txt")
         val logFile = File(AppContext.filesDir, "yunx-desktop.log")
-        val header = "YunX PC 日志导出 ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n"
+        val header = "云析 YunX-Desktop 日志导出 ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n"
         FileOutputStream(target).use { out ->
             out.write(header.toByteArray(Charsets.UTF_8))
             if (logFile.exists()) {
@@ -58,10 +58,11 @@ object LogExporter {
         true
     }.getOrDefault(false)
 
-    /** 清空运行日志（桌面版仅截断本地日志文件） */
+    /** 清空运行日志（当前文件截断 + 删掉轮转出的上一轮备份） */
     fun clearLog(): Boolean = runCatching {
-        val logFile = File(AppContext.filesDir, "yunx-desktop.log")
-        if (logFile.exists()) logFile.writeText("")
+        val dir = AppContext.filesDir
+        File(dir, "yunx-desktop.log").takeIf { it.exists() }?.writeText("")
+        File(dir, "yunx-desktop.1.log").takeIf { it.exists() }?.delete()
         true
     }.getOrDefault(false)
 
