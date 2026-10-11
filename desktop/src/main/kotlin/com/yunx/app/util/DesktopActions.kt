@@ -77,10 +77,11 @@ object DesktopActions {
     fun restartApp(): Boolean {
         val exe = launcherExe() ?: return false
         return runCatching {
-            // 用 cmd 延迟启动：本进程马上就会退出，必须等它把文件句柄都放掉
+            // 用 cmd 延迟启动：本进程马上就会退出，必须等它把文件句柄都放掉。
+            // 延迟用 ping 而不是 timeout —— timeout 在 stdin 被重定向时会直接报错退出（ProcessBuilder 默认就是管道）
             ProcessBuilder(
                 "cmd.exe", "/c",
-                "timeout /t 2 /nobreak >nul & start \"\" \"${exe.absolutePath}\""
+                "ping -n 3 127.0.0.1 >nul & start \"\" \"${exe.absolutePath}\""
             ).directory(exe.parentFile).start()
             true
         }.getOrDefault(false)
