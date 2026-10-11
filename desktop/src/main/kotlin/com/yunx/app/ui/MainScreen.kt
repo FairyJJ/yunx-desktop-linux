@@ -8,7 +8,9 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -589,18 +591,7 @@ fun MainScreen(
         }
     }
 
-    // 首次启动引导页：全屏覆盖（优先级最高）
-    if (showOnboarding) {
-        OnboardingScreen(
-            onFinish = {
-                AppContext.miscPrefs.putBoolean("onboarding_shown", true)
-                showOnboarding = false
-            }
-        )
-        return
-    }
-
-    // 夸克登录页：全屏覆盖
+    // 夸克登录页：全屏覆盖（含内嵌 Chromium，见文件末尾的覆盖层组）
     if (showQuarkLogin) {
         QuarkLoginScreen(
             viewModel = viewModel,
@@ -620,27 +611,6 @@ fun MainScreen(
         return
     }
 
-    // 迅雷登录页：全屏覆盖（账号密码 / 短信登录 / 网页登录三个入口）
-    if (showXunleiLogin) {
-        XunleiLoginScreen(
-            viewModel = xunleiViewModel,
-            onBack = { showXunleiLogin = false },
-            onSaved = { showXunleiLogin = false },
-            onVerify = { url, deviceId ->
-                xunleiVerifyUrl = url
-                xunleiVerifyDeviceId = deviceId
-                showXunleiLogin = false
-                showXunleiVerify = true
-            },
-            onWebLogin = {
-                // 网页登录：另一套接口，不受 App 通道风控影响，收不到短信时的兜底
-                showXunleiLogin = false
-                showXunleiWebLogin = true
-            }
-        )
-        return
-    }
-
     // 迅雷网页登录页：全屏覆盖（内嵌 JCEF 打开 pan.xunlei.com，读取 localStorage 的网页凭据）
     if (showXunleiWebLogin) {
         XunleiWebLoginScreen(
@@ -650,29 +620,6 @@ fun MainScreen(
                 showXunleiLogin = true
             },
             onSaved = { showXunleiWebLogin = false }
-        )
-        return
-    }
-
-    // 迅雷验证页（桌面版：系统浏览器承载验证）
-    if (showXunleiVerify) {
-        XunleiVerifyWebViewScreen(
-            verifyUrl = xunleiVerifyUrl,
-            deviceId = xunleiVerifyDeviceId,
-            onResult = { success, _ ->
-                showXunleiVerify = false
-                showXunleiLogin = true // 回到登录页
-                if (success) {
-                    SnackbarController.show("验证完成，正在自动登录…")
-                    xunleiViewModel.retryLoginAfterVerify()
-                } else {
-                    SnackbarController.show("验证未完成，请重试")
-                }
-            },
-            onBack = {
-                showXunleiVerify = false
-                showXunleiLogin = true
-            }
         )
         return
     }
@@ -697,52 +644,12 @@ fun MainScreen(
         return
     }
 
-    // 123 登录页：全屏覆盖（账号+密码表单登录换 JWT）
-    if (showPan123Login) {
-        Pan123LoginScreen(
-            viewModel = pan123ViewModel,
-            onBack = { showPan123Login = false },
-            onSaved = { showPan123Login = false }
-        )
-        return
-    }
-
     // 115 登录页：全屏覆盖（内嵌浏览器登录抓 Cookie）
     if (showPan115Login) {
         Pan115LoginScreen(
             viewModel = pan115ViewModel,
             onBack = { showPan115Login = false },
             onSaved = { showPan115Login = false }
-        )
-        return
-    }
-
-    // 光鸭云盘登录页：全屏覆盖（账号密码 / 短信验证码）
-    if (showGuangYaLogin) {
-        GuangYaLoginScreen(
-            viewModel = guangyaViewModel,
-            onBack = { showGuangYaLogin = false },
-            onSaved = { showGuangYaLogin = false }
-        )
-        return
-    }
-
-    // 蓝奏云优享版登录页：全屏覆盖（账号密码）
-    if (showILanzouLogin) {
-        ILanzouLoginScreen(
-            viewModel = ilanzouViewModel,
-            onBack = { showILanzouLogin = false },
-            onSaved = { showILanzouLogin = false }
-        )
-        return
-    }
-
-    // 蓝奏云登录页：全屏覆盖（账号密码 / 手动 Cookie）
-    if (showLanzouLogin) {
-        LanzouLoginScreen(
-            viewModel = lanzouViewModel,
-            onBack = { showLanzouLogin = false },
-            onSaved = { showLanzouLogin = false }
         )
         return
     }
@@ -1118,6 +1025,100 @@ fun MainScreen(
             )
         }
 
+        // ===== 全屏页覆盖层（带过场动画）=====
+        // 这些页面此前是「早期返回」的硬切（一帧切换，没有任何过渡），现在统一改成覆盖层 + 淡入/轻微上滑，
+        // 返回时反向淡出 —— 与二级页的过渡语言保持一致。
+        // ★ 为什么只有这 7 个页面在这里：内嵌 Chromium 的登录页（夸克 / UC / 百度 / 139 / 115 / 迅雷网页登录）
+        //   用的是 SwingPanel（真实 AWT 子控件），Compose 侧无法对它做透明度与位移动画，
+        //   强行套过渡会出现「页面淡入但浏览器区域瞬间出现」的破绽，所以那几个页面保持原样（仍是早期返回）。
+        PageOverlay(visible = showXunleiLogin) {
+            XunleiLoginScreen(
+                viewModel = xunleiViewModel,
+                onBack = { showXunleiLogin = false },
+                onSaved = { showXunleiLogin = false },
+                onVerify = { url, deviceId ->
+                    xunleiVerifyUrl = url
+                    xunleiVerifyDeviceId = deviceId
+                    showXunleiLogin = false
+                    showXunleiVerify = true
+                },
+                onWebLogin = {
+                    // 网页登录：另一套接口，不受 App 通道风控影响，收不到短信时的兜底
+                    showXunleiLogin = false
+                    showXunleiWebLogin = true
+                }
+            )
+        }
+
+        // 迅雷验证页（桌面版：系统浏览器承载验证）；放在登录页之后 → 交叉切换时它绘制在上层
+        PageOverlay(visible = showXunleiVerify) {
+            XunleiVerifyWebViewScreen(
+                verifyUrl = xunleiVerifyUrl,
+                deviceId = xunleiVerifyDeviceId,
+                onResult = { success, _ ->
+                    showXunleiVerify = false
+                    showXunleiLogin = true // 回到登录页
+                    if (success) {
+                        SnackbarController.show("验证完成，正在自动登录…")
+                        xunleiViewModel.retryLoginAfterVerify()
+                    } else {
+                        SnackbarController.show("验证未完成，请重试")
+                    }
+                },
+                onBack = {
+                    showXunleiVerify = false
+                    showXunleiLogin = true
+                }
+            )
+        }
+
+        PageOverlay(visible = showPan123Login) {
+            Pan123LoginScreen(
+                viewModel = pan123ViewModel,
+                onBack = { showPan123Login = false },
+                onSaved = { showPan123Login = false }
+            )
+        }
+
+        PageOverlay(visible = showGuangYaLogin) {
+            GuangYaLoginScreen(
+                viewModel = guangyaViewModel,
+                onBack = { showGuangYaLogin = false },
+                onSaved = { showGuangYaLogin = false }
+            )
+        }
+
+        PageOverlay(visible = showILanzouLogin) {
+            ILanzouLoginScreen(
+                viewModel = ilanzouViewModel,
+                onBack = { showILanzouLogin = false },
+                onSaved = { showILanzouLogin = false }
+            )
+        }
+
+        PageOverlay(visible = showLanzouLogin) {
+            LanzouLoginScreen(
+                viewModel = lanzouViewModel,
+                onBack = { showLanzouLogin = false },
+                onSaved = { showLanzouLogin = false }
+            )
+        }
+
+        // 首次启动引导页：优先级最高（放在最后 → 绘制在最上层），只做淡入淡出（整页视觉较重，位移会显晃）
+        AnimatedVisibility(
+            visible = showOnboarding,
+            enter = fadeIn(tween(260)),
+            exit = fadeOut(tween(200)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            OnboardingScreen(
+                onFinish = {
+                    AppContext.miscPrefs.putBoolean("onboarding_shown", true)
+                    showOnboarding = false
+                }
+            )
+        }
+
         // 全局弹窗覆盖层（FadeAlertDialog）：窗口内直接绘制，零原生窗口开销。
         // 放在根部最后 → 绘制在所有内容（含全屏覆盖层）之上。
         OverlayDialogHost()
@@ -1344,6 +1345,27 @@ fun MainScreen(
             }
         }
         }
+    }
+}
+
+/**
+ * 全屏页的进出过渡：淡入 + 轻微上滑（返回时反向）。
+ *
+ * 尺度刻意做小（位移只有高度的 1/20、时长 200/140ms）：全屏页位移过大在桌面大窗口上会显得晃，
+ * 轻微上滑只是给「页面被推上来」一点方向感，与二级页的淡入淡出（220/160ms）配合不会互相打架。
+ *
+ * ★ 只适用于**纯 Compose** 的页面：内嵌 SwingPanel（JCEF）的页面不能套这个 —— AWT 子控件不吃
+ *   Compose 的 alpha/位移变换，会出现「页面淡入、浏览器区域瞬间出现」的破绽。
+ */
+@Composable
+private fun PageOverlay(visible: Boolean, content: @Composable () -> Unit) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(200)) + slideInVertically(tween(200)) { it / 20 },
+        exit = fadeOut(tween(140)) + slideOutVertically(tween(140)) { it / 20 },
+        modifier = Modifier.fillMaxSize()
+    ) {
+        content()
     }
 }
 

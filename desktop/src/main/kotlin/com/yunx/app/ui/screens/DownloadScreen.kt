@@ -1,11 +1,13 @@
 package com.yunx.app.ui.screens
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -120,9 +122,18 @@ fun DownloadScreen(
         if (downloadDebug) ({ task -> debugTaskId = task.id }) else null
 
     Box(modifier = modifier.fillMaxSize()) {
-        if (tasks.isEmpty()) {
-            EmptyDownloadState(modifier = Modifier.align(Alignment.Center))
-        } else {
+        // 空状态 ↔ 任务列表之间做淡入淡出：此前是硬切，第一条任务入队 / 删完最后一条时画面会「跳」一下。
+        // 用 AnimatedContent（而不是 Crossfade）便于后续按状态差异再定制过渡。
+        AnimatedContent(
+            targetState = tasks.isEmpty(),
+            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(140)) },
+            label = "downloadListState"
+        ) { empty ->
+            if (empty) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    EmptyDownloadState(modifier = Modifier.align(Alignment.Center))
+                }
+            } else {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 批量操作栏：全部暂停 / 全部开始 / 删除全部
                 DownloadBatchBar(
@@ -154,6 +165,7 @@ fun DownloadScreen(
 
                     items(rootTasks, key = { it.id }) { task ->
                         DownloadTaskCard(
+                            modifier = Modifier.animateItem(),
                             task = task,
                             stats = stats[task.id],
                             onPause = { viewModel.pause(task.id) },
@@ -167,6 +179,7 @@ fun DownloadScreen(
                     folderGroups.forEach { (folder, groupTasks) ->
                         item(key = "folder_$folder") {
                             FolderDownloadGroup(
+                                modifier = Modifier.animateItem(),
                                 folder = folder,
                                 tasks = groupTasks,
                                 stats = stats,
@@ -181,6 +194,7 @@ fun DownloadScreen(
                 }
             }
         }
+    }
 
         // 添加任务入口（手动粘贴直链 / 磁力链接的唯一入口）。
         // 注意：空状态文案里写着「也可点击右下角按钮手动添加」，这个按钮一旦缺失，那句说明就成了死指引。
@@ -423,6 +437,7 @@ private fun EmptyDownloadState(modifier: Modifier = Modifier) {
  */
 @Composable
 private fun FolderDownloadGroup(
+    modifier: Modifier = Modifier,
     folder: String,
     tasks: List<DownloadTaskEntity>,
     stats: Map<Long, DownloadStats>,
@@ -443,7 +458,7 @@ private fun FolderDownloadGroup(
     val done = completed == tasks.size
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         shape = MaterialTheme.shapes.large,
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
@@ -737,6 +752,7 @@ private fun DownloadSubTaskRow(
 
 @Composable
 private fun DownloadTaskCard(
+    modifier: Modifier = Modifier,
     task: DownloadTaskEntity,
     stats: DownloadStats?,
     onPause: () -> Unit,
@@ -760,7 +776,7 @@ private fun DownloadTaskCard(
     var showMenu by remember { mutableStateOf(false) }
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .clickable(onClick = {})

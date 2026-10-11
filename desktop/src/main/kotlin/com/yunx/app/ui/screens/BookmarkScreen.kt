@@ -152,6 +152,7 @@ fun BookmarkScreen(
                 items(filtered, key = { it.id }) { bookmark ->
                     BookmarkRow(
                         bookmark = bookmark,
+                        modifier = Modifier.animateItem(),
                         onClick = { onResolve(bookmark.link, bookmark.pwd) },
                         onLongClick = { menuBookmark = bookmark }
                     )
@@ -254,11 +255,12 @@ private fun CategoryFilterBar(
 @Composable
 private fun BookmarkRow(
     bookmark: BookmarkEntity,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),

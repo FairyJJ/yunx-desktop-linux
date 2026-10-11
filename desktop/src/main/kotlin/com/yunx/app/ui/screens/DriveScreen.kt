@@ -548,7 +548,7 @@ fun DriveScreen(
                     )
                 }
                 items(others, key = { it.id }) { account ->
-                    DriveAccountCard(account = account)
+                    DriveAccountCard(account = account, modifier = Modifier.animateItem())
                 }
                 item(key = github.id) {
                     // GitHub：已配置 Token 点击主体进入「我的主页」；未配置打开 Token 弹窗；更多按钮在登录后显示
@@ -726,6 +726,7 @@ fun DriveScreen(
 @Composable
 private fun DriveAccountCard(
     account: DriveAccount,
+    modifier: Modifier = Modifier,
     /** 网盘空间详情（已登录且有数据时在卡片内显示进度条）；null 不显示 */
     quota: QuotaInfo? = null,
     onClick: (() -> Unit)? = null,
@@ -748,13 +749,13 @@ private fun DriveAccountCard(
     if (onClick != null) {
         Card(
             onClick = onClick,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             shape = cardShape,
             colors = cardColors
         ) { content() }
     } else {
         Card(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = modifier.fillMaxWidth(),
             shape = cardShape,
             colors = cardColors
         ) { content() }

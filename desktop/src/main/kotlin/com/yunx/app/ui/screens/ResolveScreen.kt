@@ -638,7 +638,11 @@ private fun HomeShortcutsSection(
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(bookmarks, key = { it.id }) { bookmark ->
-                    HomeShortcutTile(bookmark = bookmark, onClick = { onOpen(bookmark) })
+                    HomeShortcutTile(
+                        bookmark = bookmark,
+                        modifier = Modifier.animateItem(),
+                        onClick = { onOpen(bookmark) }
+                    )
                 }
             }
         }
@@ -649,10 +653,11 @@ private fun HomeShortcutsSection(
 @Composable
 private fun HomeShortcutTile(
     bookmark: BookmarkEntity,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .width(84.dp)
             .clip(MaterialTheme.shapes.medium)
             .clickable(onClick = onClick)

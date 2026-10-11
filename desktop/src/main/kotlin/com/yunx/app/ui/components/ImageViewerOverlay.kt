@@ -1,5 +1,9 @@
 package com.yunx.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -73,19 +77,25 @@ fun ImageViewerOverlay(
     modifier: Modifier = Modifier
 ) {
     val link = url?.trim().orEmpty()
-    if (link.isEmpty()) return
+    // ★ 关闭时不能立刻退出组合：留一份「上一次打开的链接」跑完淡出动画，否则关图是硬切。
+    var lastLink by remember { mutableStateOf("") }
+    if (link.isNotEmpty()) lastLink = link
+    val visible = link.isNotEmpty()
+    // 从未打开过 → 什么都不组合（零开销）
+    if (lastLink.isEmpty()) return
+    val shownLink = lastLink
 
-    val bitmap by produceState<ImageBitmap?>(initialValue = RemoteImageLoader.cached(link), link) {
-        if (value == null) value = RemoteImageLoader.load(link)
+    val bitmap by produceState<ImageBitmap?>(initialValue = RemoteImageLoader.cached(shownLink), shownLink) {
+        if (value == null) value = RemoteImageLoader.load(shownLink)
     }
 
-    // Esc 关闭（注册在本页 BackHandler 之后，故优先于「返回上一页」）
-    BackHandler { onDismiss() }
+    // Esc 关闭（注册在本页 BackHandler 之后，故优先于「返回上一页」）；淡出期间已不再拦截 Esc
+    BackHandler(enabled = visible) { onDismiss() }
 
     var container by remember { mutableStateOf(IntSize.Zero) }
-    var absScale by remember(link) { mutableFloatStateOf(1f) }
-    var offset by remember(link) { mutableStateOf(Offset.Zero) }
-    var initialized by remember(link) { mutableStateOf(false) }
+    var absScale by remember(shownLink) { mutableFloatStateOf(1f) }
+    var offset by remember(shownLink) { mutableStateOf(Offset.Zero) }
+    var initialized by remember(shownLink) { mutableStateOf(false) }
 
     val imageW = (bitmap?.width ?: 0).toFloat()
     val imageH = (bitmap?.height ?: 0).toFloat()
@@ -102,7 +112,7 @@ fun ImageViewerOverlay(
     val viewCenter = Offset(containerW / 2f, containerH / 2f)
 
     // 尺寸就绪后按「适应窗口」初始化一次
-    LaunchedEffect(link, imageW, imageH, containerW, containerH) {
+    LaunchedEffect(shownLink, imageW, imageH, containerW, containerH) {
         if (!initialized && imageW > 0f && imageH > 0f && containerW > 0f && containerH > 0f) {
             absScale = initialScale
             offset = Offset.Zero
@@ -129,21 +139,28 @@ fun ImageViewerOverlay(
         return abs(rel.x) <= halfW && abs(rel.y) <= halfH
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    // 打开/关闭做淡入淡出（图片是纯 Compose 绘制，可安全套 alpha/缩放）
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(180)),
+        exit = fadeOut(tween(140)),
+        modifier = modifier.fillMaxSize()
+    ) {
+    Box(modifier = Modifier.fillMaxSize()) {
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.92f))
                 .onSizeChanged { container = it }
                 // 拖拽平移：整个预览区域生效（含图片外的画布），任意缩放级别都可拖
-                .pointerInput(link) {
+                .pointerInput(shownLink) {
                     detectDragGestures { change, dragAmount ->
                         offset += dragAmount
                         change.consume()
                     }
                 }
                 // 双击复位到适应窗口；单击图片外的背景关闭
-                .pointerInput(link) {
+                .pointerInput(shownLink) {
                     detectTapGestures(
                         onDoubleTap = {
                             absScale = initialScale
@@ -211,5 +228,6 @@ fun ImageViewerOverlay(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 16.dp)
         )
+    }
     }
 }
