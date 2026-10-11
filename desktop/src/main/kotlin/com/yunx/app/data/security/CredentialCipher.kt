@@ -1,7 +1,9 @@
 package com.yunx.app.data.security
 
 import com.yunx.app.AppContext
+import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.util.DiagnosticLog
+import com.yunx.app.util.Log
 import java.io.File
 import java.security.SecureRandom
 import java.util.Base64
@@ -20,39 +22,27 @@ internal interface CredentialCipher {
 
 /**
  * 桌面版凭证加密：AES-256-GCM。
- * 密钥为首次启动生成的随机 32 字节，保存在 `<数据库目录>/credential.key`
- * （数据库目录默认＝数据根目录，可在「设置 → 储存目录」改；密钥必须跟着库走，否则库里的密文全部解不开）。
+ * 主密钥为首次启动生成的随机 32 字节，保存在 `<数据库目录>/credential.key`；
+ * 密钥本身按「设置 → 储存目录 → 数据库加密等级」的档位包裹（明文 / 本机派生密钥 / DPAPI，见 [DbKeyStore]）。
  * 输出格式与原 Android 版完全相同："yunx:v1:<iv Base64>:<ct Base64>"，AAD = purpose。
  */
 internal class FileCredentialCipher : CredentialCipher {
 
     private val key: SecretKeySpec by lazy {
-        val keyFile = resolveKeyFile()
-        val bytes = if (keyFile.exists()) {
-            keyFile.readBytes()
-        } else {
-            ByteArray(32).also { SecureRandom().nextBytes(it) }.also { newKey ->
-                keyFile.parentFile?.mkdirs()
-                keyFile.writeBytes(newKey)
+        val keyFile = DbKeyStore.keyFile(AppContext.dbDir, AppContext.dataDir)
+        val level = DbEncryptionLevel.fromId(SettingsRepository().dbEncryptionLevel)
+        val bytes = runCatching { DbKeyStore.loadOrCreate(keyFile, level) }.getOrElse { e ->
+            // 密钥解不开（最典型：在「普通 / 较为严格」档下把数据拷到了别的机器/别的 Windows 用户）：
+            // 这把密钥已经不可恢复。保留原文件备查，另生成一把新密钥 —— 否则连「重新登录」都保存不了，
+            // 应用会直接变成不可用；库里那些解不开的密文由 DAO 的自愈逻辑清掉，用户重新登录即可。
+            Log.e(TAG, "凭证密钥解不开（${e.message}），改用新密钥：旧文件保留为 ${keyFile.name}.unreadable")
+            runCatching {
+                keyFile.renameTo(File(keyFile.parentFile, "${keyFile.name}.unreadable"))
             }
+            DbKeyStore.loadOrCreate(keyFile, level)
         }
         require(bytes.size == 32) { "invalid credential key file" }
         SecretKeySpec(bytes, "AES")
-    }
-
-    /**
-     * 密钥文件位置：**先看数据库目录，再看数据根目录**（只读回退，不在数据根目录新建）。
-     *
-     * 回退这一条是为兼容两种情况：① 老版本把密钥放在数据根目录（数据库目录＝数据根目录，同一个文件）；
-     * ② 用户把数据库/缓存切到别处、但没跟着搬密钥 —— 只要数据根目录里还有原密钥，密文就仍然解得开，
-     * 绝不会因为「找不到密钥」而新建一把随机密钥（那会让所有已存凭证解不开、进而被自愈逻辑清空）。
-     */
-    private fun resolveKeyFile(): File {
-        val primary = File(AppContext.dbDir, KEY_FILE_NAME)
-        if (primary.exists()) return primary
-        val legacy = File(AppContext.dataDir, KEY_FILE_NAME)
-        if (legacy.exists() && legacy.canonicalPath != primary.canonicalPath) return legacy
-        return primary
     }
 
     override fun encrypt(plaintext: String, purpose: String): String {
@@ -92,6 +82,6 @@ internal class FileCredentialCipher : CredentialCipher {
 
     private companion object {
         const val PREFIX = "yunx:v1:"
-        const val KEY_FILE_NAME = "credential.key"
+        const val TAG = "YunX-Crypto"
     }
 }

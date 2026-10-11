@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -51,6 +52,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yunx.app.AppContext
 import com.yunx.app.data.prefs.SettingsRepository
+import com.yunx.app.data.security.DbEncryptionLevel
+import com.yunx.app.data.security.DbEncryptionManager
 import com.yunx.app.data.storage.StorageMigrator
 import com.yunx.app.data.storage.StoragePreset
 import com.yunx.app.ui.BackHandler
@@ -111,9 +114,13 @@ fun StorageDirectoryScreen(
     val configuredDbDir = configuredDb?.let { File(it) } ?: defaultDbDir
 
     var busy by remember { mutableStateOf(false) }
+    var busyText by remember { mutableStateOf("正在搬迁数据，请勿关闭应用…") }
     var request by remember { mutableStateOf<MigrateRequest?>(null) }
     var errorText by remember { mutableStateOf<String?>(null) }
     var resultText by remember { mutableStateOf<String?>(null) }
+    // 数据库加密等级（立即生效，不需要重启）；显示**实际**档位而非偏好值
+    var encLevel by remember { mutableStateOf(DbEncryptionManager.effectiveLevel()) }
+    var pendingLevel by remember { mutableStateOf<DbEncryptionLevel?>(null) }
 
     BackHandler { onBack() }
 
@@ -160,6 +167,7 @@ fun StorageDirectoryScreen(
     fun migrate(req: MigrateRequest) {
         request = null
         busy = true
+        busyText = "正在搬迁数据，请勿关闭应用…"
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
@@ -190,6 +198,25 @@ fun StorageDirectoryScreen(
                 }
                 .onFailure { e ->
                     errorText = "搬迁失败，目录设置未改动：${e.message ?: e.javaClass.simpleName}"
+                }
+        }
+    }
+
+    /** 切换加密等级：只重新包裹主密钥，秒级完成、立即生效（不需要重启） */
+    fun switchLevel(target: DbEncryptionLevel) {
+        pendingLevel = null
+        busy = true
+        busyText = "正在重新包裹密钥…"
+        scope.launch {
+            val result = withContext(Dispatchers.IO) { DbEncryptionManager.switchTo(target) }
+            busy = false
+            result
+                .onSuccess {
+                    encLevel = target
+                    SnackbarController.show("加密等级已切换为「${target.label}」")
+                }
+                .onFailure { e ->
+                    errorText = "切换加密等级失败，仍保持「${encLevel.label}」：${e.message ?: e.javaClass.simpleName}"
                 }
         }
     }
@@ -319,12 +346,44 @@ fun StorageDirectoryScreen(
                     }) { Text("打开所在文件夹") }
                     Spacer(Modifier.height(4.dp))
                     HintRow("搬迁时会连同 credential.key 一起搬走 —— 库里的凭证是用它加密的，分开会全部解不开。")
+                    if (encLevel.isMachineBound && !samePath(configuredDbDir, defaultDbDir)) {
+                        Spacer(Modifier.height(6.dp))
+                        HintRow(
+                            "⚠ 数据库已不在用户目录，而当前加密等级「${encLevel.label}」绑定本机：" +
+                                "若要把数据当作**便携版**带到别的电脑使用，请把下面的加密等级切回「宽松」，否则新机器上凭证无法解密。"
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // ===== 数据库加密等级 =====
+                SectionCard(
+                    icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+                    title = "数据库加密等级",
+                    subtitle = "控制凭证主密钥（credential.key）怎么保护；改档只重新包裹密钥，不动库内数据、立即生效"
+                ) {
+                    DbEncryptionLevel.entries.forEach { level ->
+                        val supported = level.isSupported
+                        PresetRow(
+                            title = if (level == DbEncryptionLevel.NORMAL) "${level.label}（默认）" else level.label,
+                            subtitle = levelDescription(level, supported),
+                            selected = encLevel == level,
+                            enabled = supported && !busy,
+                            onClick = { if (supported && level != encLevel) pendingLevel = level }
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    HintRow(
+                        "三档都只保护密钥：库内**账号凭证**始终是 AES-256-GCM 密文，" +
+                            "但任务文件名 / URL / 保存路径等元数据在三档下都是明文（整库加密需要 SQLCipher，暂未支持）。"
+                    )
                 }
 
                 Spacer(Modifier.height(24.dp))
             }
 
-            // 搬迁进行中：就地遮罩 + 卡片（不用原生弹窗，避免挡住 UI 线程）
+            // 搬迁/改档进行中：就地遮罩 + 卡片（不用原生弹窗，避免挡住 UI 线程）
             if (busy) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -338,7 +397,7 @@ fun StorageDirectoryScreen(
                             ) {
                                 CircularProgressIndicator(modifier = Modifier.size(22.dp))
                                 Spacer(Modifier.width(14.dp))
-                                Text("正在搬迁数据，请勿关闭应用…")
+                                Text(busyText)
                             }
                         }
                     }
@@ -361,6 +420,12 @@ fun StorageDirectoryScreen(
                         append("将从\n${req.source.absolutePath}\n搬迁到\n${req.target.absolutePath}\n\n")
                         if (isDb) {
                             append("搬迁完成后需要重启应用才会生效。旧位置的数据库文件会在下次启动时删除。")
+                            if (encLevel.isMachineBound) {
+                                append(
+                                    "\n\n⚠ 当前加密等级「${encLevel.label}」绑定本机：" +
+                                        "若要把数据当作便携版带到别的电脑使用，请先把加密等级切回「宽松」。"
+                                )
+                            }
                         } else {
                             append(
                                 "搬迁完成后需要重启应用才会生效。内嵌浏览器的解包文件（约 200MB）不搬、" +
@@ -375,6 +440,22 @@ fun StorageDirectoryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { request = null }) { Text("取消") }
+            }
+        )
+    }
+
+    // 加密等级切换确认：普通/较为严格会绑定本机，必须让用户明确知道后果
+    pendingLevel?.let { target ->
+        FadeAlertDialog(
+            visible = true,
+            onDismissRequest = { pendingLevel = null },
+            title = { Text("切换为「${target.label}」？") },
+            text = { Text(levelWarning(target)) },
+            confirmButton = {
+                TextButton(onClick = { switchLevel(target) }) { Text("切换") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLevel = null }) { Text("取消") }
             }
         )
     }
@@ -502,25 +583,31 @@ private fun PresetRow(
     title: String,
     subtitle: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
+    val contentColor = if (enabled) {
+        MaterialTheme.colorScheme.onSurface
+    } else {
+        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 44.dp)
-            .selectable(selected = selected, onClick = onClick)
+            .selectable(selected = selected, enabled = enabled, onClick = onClick)
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RadioButton(selected = selected, onClick = null)
+        RadioButton(selected = selected, onClick = null, enabled = enabled)
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = contentColor)
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
+                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else contentColor,
+                maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
         }
@@ -561,6 +648,35 @@ private fun HintRow(text: String) {
 }
 
 // ---------- 工具 ----------
+
+/** 各档位的副标题（说明「库文件 / 凭证列 / 密钥」三层各是什么状态） */
+private fun levelDescription(level: DbEncryptionLevel, supported: Boolean): String = when (level) {
+    DbEncryptionLevel.LOOSE ->
+        "库明文 · 凭证列加密 · 密钥明文存放。换机器 / 便携版必须用这档"
+    DbEncryptionLevel.NORMAL ->
+        "库明文 · 凭证列加密 · 密钥用本机派生密钥包裹（绑定本机，换机器解不开）"
+    DbEncryptionLevel.STRICT ->
+        "库明文 · 凭证列加密 · 密钥用 Windows DPAPI 保护（绑定当前 Windows 用户）"
+    DbEncryptionLevel.STRICTEST ->
+        if (supported) "库整体加密 + DPAPI 保护密钥" else "库整体加密（SQLCipher）—— 暂未支持"
+}
+
+/** 切换档位前的后果提示 */
+private fun levelWarning(target: DbEncryptionLevel): String = when (target) {
+    DbEncryptionLevel.LOOSE ->
+        "密钥将**以明文**存放在 credential.key 中：任何能读到该文件的人都能解开网盘凭证。" +
+            "只在需要用便携版 / 换机器时选择。"
+    DbEncryptionLevel.NORMAL ->
+        "密钥将用**本机派生密钥**包裹：绑定当前这台机器。\n" +
+            "⚠ 之后把数据库/密钥拷到别的电脑、或重装系统，凭证将无法解密（表现为网盘账号全部未登录，需重新登录）。\n" +
+            "如果需要便携使用，请保持「宽松」。"
+    DbEncryptionLevel.STRICT ->
+        "密钥将用 **Windows DPAPI** 保护：绑定当前 Windows 用户。\n" +
+            "⚠ 换 Windows 用户、重装系统或换机器后，凭证将无法解密（需重新登录）。\n" +
+            "如果需要便携使用，请保持「宽松」。"
+    DbEncryptionLevel.STRICTEST ->
+        "该档需要 SQLCipher 原生库支持，当前版本暂未实现。"
+}
 
 /** 自定义目录：原生目录选择器必须在 IO 线程打开（阻塞式模态对话框，直接跑会卡住 UI） */
 private fun pickCustom(scope: CoroutineScope, kind: StorageKind, onChosen: (StorageKind, File) -> Unit) {

@@ -152,6 +152,16 @@ class SettingsRepository {
         }
 
     /**
+     * 数据库加密等级（设置 → 储存目录 → 数据库加密等级）：键值为 [com.yunx.app.data.security.DbEncryptionLevel.id]，
+     * 默认 `normal`（普通：密钥用本机派生密钥包裹）。改档只重新包裹 32 字节主密钥，不碰库里数据。
+     */
+    var dbEncryptionLevel: String
+        get() = prefs.get("db_encryption_level", "normal")
+        set(value) {
+            prefs.put("db_encryption_level", value)
+        }
+
+    /**
      * 关闭主窗口时的行为：
      * - "ask"：每次询问（默认）
      * - "exit"：直接退出
