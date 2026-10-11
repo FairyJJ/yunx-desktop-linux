@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import kotlin.reflect.KClass
 import com.yunx.app.data.db.DownloadTaskEntity
+import com.yunx.app.data.download.DownloadDebugLog
 import com.yunx.app.data.download.DownloadManager
 import com.yunx.app.data.download.DownloadStats
 import com.yunx.app.ui.SnackbarController
@@ -73,6 +74,20 @@ class DownloadViewModel(private val manager: DownloadManager) : ViewModel() {
     fun removeAll(deleteLocal: Boolean = false) {
         tasks.value.toList().forEach { manager.remove(it.id, deleteLocal) }
     }
+
+    // ---------- 下载调试（设置 → 关于云析 → 长按 → 开发调试 → 下载调试）----------
+
+    /** 某任务当前每个在飞分片（= 每个线程正在干什么），调试页每秒拉一次 */
+    fun chunkDebugSnapshot(taskId: Long) = manager.chunkDebugSnapshot(taskId)
+
+    /** 全局资源快照（在飞配额 / 活跃任务 / 线程池 / 堆内存） */
+    fun resourceDebugSnapshot() = manager.resourceDebugSnapshot()
+
+    /** 某任务的事件流（时间正序） */
+    fun debugLogEntries(taskId: Long) = DownloadDebugLog.entries(taskId)
+
+    /** 调试页「强制重连」：把某一路在飞分片标记为慢连接、换连接续传 */
+    fun forcePreemptChunk(taskId: Long, key: String) = manager.forcePreemptChunk(taskId, key)
 
     class Factory(private val manager: DownloadManager) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

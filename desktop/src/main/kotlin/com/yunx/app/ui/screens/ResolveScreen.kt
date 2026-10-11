@@ -785,10 +785,11 @@ private fun ClipboardSuggestCard(
  */
 @Composable
 private fun GitHubBadge(label: String) {
+    // 统一走主题容器色：硬编码的绿/橙/灰在深色模式下对比度不足（且与主题种子色不协调）
     val (bg, fg) = when (label) {
-        "最新" -> Color(0xFF2DA44E) to Color.White
-        "预发布" -> Color(0xFFBF8700) to Color.White
-        "草稿" -> Color(0xFF6E7681) to Color.White
+        "最新" -> MaterialTheme.colorScheme.tertiaryContainer to MaterialTheme.colorScheme.onTertiaryContainer
+        "预发布" -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
+        "草稿" -> MaterialTheme.colorScheme.surfaceContainerHighest to MaterialTheme.colorScheme.onSurface
         else -> MaterialTheme.colorScheme.secondaryContainer to MaterialTheme.colorScheme.onSecondaryContainer
     }
     Box(

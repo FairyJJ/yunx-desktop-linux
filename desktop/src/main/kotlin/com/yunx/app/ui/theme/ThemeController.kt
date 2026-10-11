@@ -25,6 +25,10 @@ object ThemeController {
     var seedColor by mutableStateOf(SettingsRepository.DEFAULT_SEED_COLOR)
         private set
 
+    /** 下载调试：开启后下载页右键任务可查看「调试信息」（默认关闭；关闭会清空全部调试日志） */
+    var downloadDebug by mutableStateOf(false)
+        private set
+
     private var initialized = false
 
     /** 从持久化存储加载（幂等；首次调用有效） */
@@ -34,6 +38,7 @@ object ThemeController {
         darkMode = s.darkMode
         colorMode = s.themeColorMode
         seedColor = s.themeSeedColor
+        downloadDebug = s.downloadDebug
         initialized = true
     }
 
@@ -57,5 +62,14 @@ object ThemeController {
             themeSeedColor = argb
             themeColorMode = 2
         }
+    }
+
+    /**
+     * 设置下载调试开关并持久化。**关闭会清空全部调试日志**，所以清空与提示由调用方负责
+     * （设置页关开关前会先弹二次确认，确认后调用 `DownloadDebugLog.setEnabled`）。
+     */
+    fun updateDownloadDebug(value: Boolean) {
+        downloadDebug = value
+        SettingsRepository().downloadDebug = value
     }
 }

@@ -92,6 +92,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.yunx.app.ui.theme.ThemeController
+import com.yunx.app.ui.theme.readableSeedForeground
 
 /** 预置主题色（Material 风格种子色） */
 private val presetColors = listOf(
@@ -419,7 +420,8 @@ private fun ColorSelectionItem(
                 Icon(
                     imageVector = Icons.Outlined.Check,
                     contentDescription = null,
-                    tint = Color.White,
+                    // 种子色不是主题容器色：浅色种子（如黄/青）上的白勾几乎看不见，按亮度选前景色
+                    tint = readableSeedForeground(Color(color.toInt())),
                     modifier = Modifier.size(22.dp)
                 )
             }
@@ -464,7 +466,8 @@ private fun CustomColorButton(
             Icon(
                 imageVector = Icons.Outlined.Palette,
                 contentDescription = null,
-                tint = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = if (isSelected) readableSeedForeground(Color(customColor.toInt()))
+                else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(22.dp)
             )
         }
@@ -506,6 +509,7 @@ private fun ColorPickerDialog(
         ) {
             Column(
                 modifier = Modifier
+                    .verticalScroll(rememberScrollState())
                     .padding(24.dp)
                     .fillMaxWidth()
             ) {
@@ -523,8 +527,12 @@ private fun ColorPickerDialog(
                         )
                         BasicTextField(
                             value = hexInput,
+                            singleLine = true,
                             onValueChange = { input ->
-                                val filtered = input.filter { it.isLetterOrDigit() }.take(6).uppercase()
+                                // 只接受合法的十六进制字符（旧实现用 isLetterOrDigit 会把 G-Z 也放进来，
+                                // 长度凑满 6 位却解析失败，输入看起来"没反应"）
+                                val filtered = input.filter { it in '0'..'9' || it.uppercaseChar() in 'A'..'F' }
+                                    .take(6).uppercase()
                                 hexInput = filtered
                                 if (filtered.length == 6) {
                                     runCatching {

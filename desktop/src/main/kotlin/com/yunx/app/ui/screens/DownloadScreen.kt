@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
@@ -78,6 +79,7 @@ import com.yunx.app.data.download.DownloadStats
 import com.yunx.app.data.download.MagnetLink
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.components.FadeAlertDialog
+import com.yunx.app.ui.theme.ThemeController
 import com.yunx.app.ui.viewmodel.DownloadViewModel
 import com.yunx.app.util.DesktopActions
 
@@ -96,6 +98,25 @@ fun DownloadScreen(
     var showAddDialog by remember { mutableStateOf(false) }
     var pendingDelete by remember { mutableStateOf<DownloadTaskEntity?>(null) }
     var showDeleteAllConfirm by remember { mutableStateOf(false) }
+    // 下载调试页（设置 → 开发调试 → 下载调试 打开后才有入口）：整页替换任务列表，在「下载」Tab 内展开
+    var debugTaskId by remember { mutableStateOf<Long?>(null) }
+    val downloadDebug = ThemeController.downloadDebug
+    // 按 id 取当前任务（任务在调试页期间仍会变状态：暂停/继续/完成都要跟着刷新）；
+    // 任务被删除时 debugTask 变 null，自动退回列表
+    val debugTask = debugTaskId?.let { id -> tasks.firstOrNull { it.id == id } }
+    if (debugTask != null) {
+        DownloadDebugScreen(
+            task = debugTask,
+            stats = stats[debugTask.id],
+            viewModel = viewModel,
+            onPause = { viewModel.pause(debugTask.id) },
+            onResume = { viewModel.resume(debugTask.id) },
+            onBack = { debugTaskId = null }
+        )
+        return
+    }
+    val openDebug: ((DownloadTaskEntity) -> Unit)? =
+        if (downloadDebug) ({ task -> debugTaskId = task.id }) else null
 
     Box(modifier = modifier.fillMaxSize()) {
         if (tasks.isEmpty()) {
@@ -137,7 +158,8 @@ fun DownloadScreen(
                             onPause = { viewModel.pause(task.id) },
                             onResume = { viewModel.resume(task.id) },
                             onRemove = { pendingDelete = task },
-                            onRedownload = { viewModel.redownload(task) }
+                            onRedownload = { viewModel.redownload(task) },
+                            onDebug = openDebug?.let { cb -> { cb(task) } }
                         )
                     }
 
@@ -150,7 +172,8 @@ fun DownloadScreen(
                                 onPause = { viewModel.pause(it) },
                                 onResume = { viewModel.resume(it) },
                                 onRemove = { pendingDelete = it },
-                                onRedownload = { viewModel.redownload(it) }
+                                onRedownload = { viewModel.redownload(it) },
+                                onDebug = openDebug
                             )
                         }
                     }
@@ -405,7 +428,8 @@ private fun FolderDownloadGroup(
     onPause: (Long) -> Unit,
     onResume: (Long) -> Unit,
     onRemove: (DownloadTaskEntity) -> Unit,
-    onRedownload: (DownloadTaskEntity) -> Unit
+    onRedownload: (DownloadTaskEntity) -> Unit,
+    onDebug: ((DownloadTaskEntity) -> Unit)? = null
 ) {
     var expanded by remember { mutableStateOf(true) }
     val completed = tasks.count { it.status == DownloadTaskEntity.STATUS_COMPLETED }
@@ -511,9 +535,7 @@ private fun FolderDownloadGroup(
                             progress = { fraction },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 14.dp)
-                                .height(4.dp)
-                                .clip(RoundedCornerShape(2.dp)),
+                                .padding(horizontal = 14.dp),
                             color = MaterialTheme.colorScheme.primary,
                             trackColor = MaterialTheme.colorScheme.surfaceContainerHighest
                         )
@@ -530,7 +552,8 @@ private fun FolderDownloadGroup(
                                 onPause = { onPause(task.id) },
                                 onResume = { onResume(task.id) },
                                 onRemove = { onRemove(task) },
-                                onRedownload = { onRedownload(task) }
+                                onRedownload = { onRedownload(task) },
+                                onDebug = onDebug?.let { cb -> { cb(task) } }
                             )
                         }
                     }
@@ -551,7 +574,8 @@ private fun DownloadSubTaskRow(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRemove: () -> Unit,
-    onRedownload: () -> Unit
+    onRedownload: () -> Unit,
+    onDebug: (() -> Unit)? = null
 ) {
     val isDownloading = task.status == DownloadTaskEntity.STATUS_DOWNLOADING ||
         task.status == DownloadTaskEntity.STATUS_PENDING
@@ -685,9 +709,7 @@ private fun DownloadSubTaskRow(
                     progress = { fraction },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 6.dp)
-                        .height(3.dp)
-                        .clip(RoundedCornerShape(1.5f)),
+                        .padding(top = 6.dp),
                     color = if (task.status == DownloadTaskEntity.STATUS_FAILED) {
                         MaterialTheme.colorScheme.error
                     } else {
@@ -698,7 +720,7 @@ private fun DownloadSubTaskRow(
             }
         }
 
-        // 右键任务行弹出操作菜单（复制分享链接 / 复制直链 / 重新下载 / 删除）
+        // 右键任务行弹出操作菜单（复制分享链接 / 复制直链 / 调试信息 / 重新下载 / 删除）
         TaskContextMenu(
             visible = showMenu,
             title = displayName,
@@ -706,7 +728,8 @@ private fun DownloadSubTaskRow(
             directUrl = task.url,
             onDismiss = { showMenu = false },
             onRedownload = onRedownload,
-            onRemove = onRemove
+            onRemove = onRemove,
+            onDebug = onDebug
         )
     }
 }
@@ -718,7 +741,9 @@ private fun DownloadTaskCard(
     onPause: () -> Unit,
     onResume: () -> Unit,
     onRemove: () -> Unit,
-    onRedownload: () -> Unit
+    onRedownload: () -> Unit,
+    /** 「下载调试」开着时由外层传入「打开调试信息页」；关闭时为 null（右键菜单不显示该入口） */
+    onDebug: (() -> Unit)? = null
 ) {
     val isDownloading = task.status == DownloadTaskEntity.STATUS_DOWNLOADING ||
         task.status == DownloadTaskEntity.STATUS_PENDING
@@ -885,7 +910,7 @@ private fun DownloadTaskCard(
             }
         }
 
-        // 右键任务卡弹出操作菜单（复制分享链接 / 复制直链 / 重新下载 / 删除）
+        // 右键任务卡弹出操作菜单（复制分享链接 / 复制直链 / 调试信息 / 重新下载 / 删除）
         TaskContextMenu(
             visible = showMenu,
             title = task.fileName,
@@ -893,7 +918,8 @@ private fun DownloadTaskCard(
             directUrl = task.url,
             onDismiss = { showMenu = false },
             onRedownload = onRedownload,
-            onRemove = onRemove
+            onRemove = onRemove,
+            onDebug = onDebug
         )
     }
 }
@@ -1046,7 +1072,9 @@ private fun TaskContextMenu(
     directUrl: String,
     onDismiss: () -> Unit,
     onRedownload: () -> Unit,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    /** 「调试信息」入口：仅「下载调试」开关打开时非 null（见设置 → 开发调试） */
+    onDebug: (() -> Unit)? = null
 ) {
     FadeAlertDialog(
         visible = visible,
@@ -1074,6 +1102,11 @@ private fun TaskContextMenu(
                     onDismiss()
                     DesktopActions.copyToClipboard(directUrl)
                     SnackbarController.show("直链已复制")
+                }
+                if (onDebug != null) {
+                    ContextMenuRow(icon = Icons.Outlined.BugReport, label = "调试信息") {
+                        onDismiss(); onDebug()
+                    }
                 }
                 ContextMenuRow(icon = Icons.Outlined.Refresh, label = "重新下载") {
                     onDismiss(); onRedownload()

@@ -294,7 +294,7 @@ fun XunleiWebLoginScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text(
                             text = "在电脑浏览器登录 pan.xunlei.com 后，从开发者工具复制 localStorage 中 " +
-                                "${XunleiWebCredential.STORAGE_KEY} 的值（整段 JSON 即可）；也可以直接粘贴 access_token",
+                                "${XunleiWebCredential.STORAGE_KEY} 的值（整段 JSON 即可）",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -303,7 +303,7 @@ fun XunleiWebLoginScreen(
                             value = pasteInput,
                             onValueChange = { pasteInput = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("粘贴凭据 JSON 或 access_token…") },
+                            placeholder = { Text("粘贴凭据 JSON…") },
                             minLines = 4,
                             maxLines = 8
                         )

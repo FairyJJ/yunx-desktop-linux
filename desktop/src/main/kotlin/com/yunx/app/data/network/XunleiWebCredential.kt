@@ -53,6 +53,17 @@ object XunleiWebCredential {
     const val DESKTOP_UA =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
+    /**
+     * 与 [DESKTOP_UA] 配套的客户端提示头（Sec-CH-UA 系，版本号必须与 UA 里的 Chrome 大版本一致）。
+     * 桌面 UA 若不同步这些头，服务端会按移动端 client hints 判定，与 UA 冲突导致页面降级/被拒。
+     *
+     * ⚠️ 源码里的 `\"` 是 **Kotlin 转义写法**：运行时字符串里就是普通双引号 `"`、**不含反斜杠**
+     * （品牌名必须带引号，这是 client hints 的规范格式，与真实 Chrome 一致）。
+     */
+    const val DESKTOP_SEC_CH_UA = "\"Google Chrome\";v=\"131\", \"Chromium\";v=\"131\", \"Not_A Brand\";v=\"24\""
+    const val DESKTOP_SEC_CH_UA_MOBILE = "?0"
+    const val DESKTOP_SEC_CH_UA_PLATFORM = "\"Windows\""
+
     /** 允许 WebView 停留 / 跳转的域名（登录过程会经 i.xunlei.com 等官方域，统一放行 *.xunlei.com） */
     private val TRUSTED_HOSTS = listOf("xunlei.com")
 

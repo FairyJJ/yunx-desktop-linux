@@ -340,6 +340,43 @@
 | `DiagnosticWebViewClient`、`WebViewJs` 埋点、8 个登录页的 `WEBVIEW` 模块埋点 | **未移植**：桌面用 JCEF 而非 Android WebView。保留了 `DiagnosticLog.WEBVIEW` 常量与 `DiagnosticLog.webview()` 入口（日志格式与上游兼容），但暂未接 JCEF 的加载/回调事件 |
 | 上游 `app/build.gradle.kts` 版本号（1.2.9） | 桌面版本线独立：根目录 `version.txt` 改为 **1.2.7**（jpackage / 便携包 / 安装包 / 应用内版本全部由它派生） |
 
+### 9.12 本次对齐（上游 `94149ed`/`28bfa37`/`0f27e67`/`f729604`/`6384a79`/`bdafe9e`）
+
+本轮覆盖上游 `94149ed`(#152/#153) → `28bfa37`(#154) → `0f27e67`(#155) → `f729604`(#161) → `6384a79`(#163) → `bdafe9e`(#164)，对齐点由 `ccc8622` 推进到 **`bdafe9e`**。
+
+#### 已移植
+
+| 上游内容（提交） | 桌面实现与取舍 |
+| --- | --- |
+| 迅雷刷新请求补 `Sec-CH-UA` 系客户端提示（#152） | `XunleiWebCredential` 新增 `DESKTOP_SEC_CH_UA` / `DESKTOP_SEC_CH_UA_MOBILE` / `DESKTOP_SEC_CH_UA_PLATFORM` 三个常量，`XunleiApi` 的 webToken 刷新请求同步带上（只改 UA 不同步 client hints 会被判成移动端而冲突） |
+| 去掉「也可以直接粘贴 access_token」误导文案（#152） | `XunleiWebLoginScreen` 的手动粘贴说明与输入框 placeholder 同步改掉（`parse()` 仍兼容裸 token，只是不再对外宣传） |
+| `verifyAccessToken` 兼容网页 token 的 `kind=drive#about`（#161） | 逐字节移植：该接口在网页（webToken）通道下返回**顶层** `kind/quota`（没有 `data` 包裹），原来只判 `data` 会把合法网页 token 误判成未登录 →「登录成功后点保存提示未检测到登录态」 |
+| 中文口令解析（星海，夸克/UC）（#163） | 新增 `StarSeaConstants.kt` + `StarSeaApi.kt`（纯 OkHttp + org.json，直译；`android.util.Log` → 桌面 `Log`）。`ResolveViewModel.startResolve` 的兜底链路改为**先迅雷、迅雷没给出可用链接再问星海**，两个服务都失败时把更靠后那次的原因带出去（不再只丢一句「无法识别分享链接」）；`StarSeaApiTest` 同步移植 |
+| 分片级 SHA-256 校验（#163） | `ChunkDownloader`：新增 `ByteArray.toHexDigest()`、`downloadChunk(contentDigest)`、`mergeChunksToStream(onPartDigest)`（写入时增量喂摘要，合并时逐片重算比对，不符即拒绝保存损坏文件，**零额外读盘**）。`DownloadManager`：新增 `taskPartDigests` / `newPartDigest`（把断点续传已有前缀预先喂好），主池 / 弹性区 / 重试三条路径都登记摘要，`finishDownload` 校验不过就 abort |
+| 全量 SHA-256（可选开关）（#163） | 合并那一遍用 `DigestOutputStream` 顺带算，写进调试日志的「全量校验」事件；**只在「下载调试」开启时才算**（摘要没有别的去处），设置项 `fullFileSha256` 默认关 |
+| 下载调试（按任务事件流 + 调试页）（#163） | 新增 `DownloadDebugLog`（内存态、关闭即清空、单任务 2000 条 / 最多 50 个任务）与 `DownloadDebugScreen`；`DownloadManager` 埋点全覆盖（入队 / 拦截失败 / 断点失效 / 分片规划 / 抢占慢连接 / 抢占结果 / 网络变化 / 开始合并 / 分片校验 / 全量校验 / 校验失败 / 合并失败 / 清理临时文件 / 完成 / 失败 / 暂停 / 删除 / 引擎任务创建），并暴露 `chunkDebugSnapshot` / `resourceDebugSnapshot` / `forcePreemptChunk` 三个拉取式查询。入口：设置 → 关于云析 → 长按 → 开发调试 → **下载调试**（关闭有二次确认，关闭即清空日志）；下载页**右键任务 → 调试信息** |
+| Material 3 设计审查修复（#164，适用部分） | ① `SnackbarController` 换成上游的**事件队列 + 宿主优先**实现（修复多宿主并存时第二条提示被吞/重复显示）；② `Type.kt` 对齐 M3 刻度（headlineMedium 22→28、titleLarge 18→22、bodyLarge 15→16、bodyMedium 13→14…）；③ 新增 `ui/theme/ColorContrast.kt` 的 `readableSeedForeground`，主题页色圆上的对勾/Palette 图标由硬编码白色改为**按种子色亮度选黑/白**（浅色种子上原来的白图标几乎看不见）；④ `ResolveScreen` 的 GitHub 徽章由硬编码绿/橙/灰改为主题容器色（深色模式下对比度）；⑤ `DownloadScreen` 两处进度条去掉强制的 `height + clip`，交回 M3 默认尺寸；⑥ `ThemeScreen` 颜色选择器：HEX 输入只接受合法十六进制字符（旧实现 `isLetterOrDigit` 会放进 G-Z，凑满 6 位却解析失败）、`singleLine = true`、弹层加 `verticalScroll`；⑦ `MultiSelectBar` 新增 `busy` 参数（`count == 0 \|\| busy` 时禁用点击并置灰），10 个云盘页传入 `viewModel.isOperating` |
+
+#### 跳过 / 桌面差异
+
+| 上游内容 | 处理 |
+| --- | --- |
+| 欢迎页「7 大网盘」→「10 大网盘」、认证备份补光鸭/蓝奏云优享版/蓝奏云（#152） | **早已具备**：桌面引导页写的已是「10 大网盘」，`AuthBackupManager` 也已包含三个新平台的导出/导入与 DAO 装配 |
+| `suppressRequestedWithHeader()`（8 个登录页关闭 WebView 的 `X-Requested-With` 包名指纹，#152） | **不适用**：那是 Android WebView 的默认行为。桌面用 JCEF，不发这个头；桌面各 API 里显式写的 `X-Requested-With` 是各网盘接口自己的要求，与指纹无关 |
+| `applyDesktopClientHints()` / `DESKTOP_RENDER_FIX_JS`（WebView 同步 client hints + 修登录页整页空白/被裁，#161） | **不适用**：桌面 JCEF 就是真正的桌面 Chromium，client hints 天然正确；上游修的是「移动 WebView 里 `html,body{height:100%}` 被算成 0px + `overflow:hidden` 把整页裁掉」，桌面不存在该布局环境 |
+| `DownloadService`（Android 前台服务，89 行）、`MainActivity` 实况通知点击落到「下载」Tab（#163） | **不适用**：桌面没有前台服务与 Activity 跳转（窗口常驻）。保活走 `WindowsKeepAwake`，通知走 `WindowsToastNotifier` |
+| `YunXApp.onCreate` 里的 `DownloadDebugLog.install` / `AndroidManifest` 改动（#163） | **桌面等价物已实现**：装配改在 `Main.kt`（`AppContext.init()` 之后调 `DownloadDebugLog.install()`，`runCatching` 包住）；无 Manifest 概念 |
+| `ui/screens/DownloadDebugScreen` 的单列长滚动布局（#163） | **重新设计为桌面双栏**：顶部一行放「返回 + 标题 + 复制快照 / 导出完整日志」，任务卡压成一行（图标 / 名称 / 状态 / 进度 / 实时速度 / 操作同排），正文左栏＝全局资源 + 线程表、右栏＝实时日志（等宽字体、跟随尾部），两栏各自滚动 —— 桌面横向空间充裕而竖直空间更紧 |
+| `ui/components/OperationSheet` + `LocalFileOperationBusy`（#164，ModalBottomSheet 封装） | **未移植**：桌面没有 ModalBottomSheet，各操作面板走 `FadeAlertDialog` / 就地覆盖层。`CloudFileSheets` 的 `ActionItem` 也未加 `busy` 置灰 —— 桌面点菜单项后**立即关闭面板或切到下一步**（下一步自身已按 `operating` 禁用按钮），不存在上游触屏场景下的重复点击窗口 |
+| `ui/theme/WindowLayout.kt` 的 `useNavigationRail`（#164） | **不适用**：桌面窗口恒为宽屏，导航即左侧 NavigationRail，没有「宽高判断选导轨还是底栏」这一步 |
+| `MultiSelectBar` 的 Tooltip（#164） | **不适用**：桌面的批量条是「图标 + 文字」两行布局（不是上游的纯图标浮动工具条），文字标签本身已经说明了操作含义，不需要 tooltip 兜底 |
+| `DownloadScreen` 图标按钮 32dp → 48dp（#164） | **未采用**：48dp 是 Material 的**触屏**最小点击区。桌面用鼠标，48dp 按钮会明显偏大；保留 32dp |
+| `ThemeScreen` 自定义颜色弹层补「色相/饱和度/明度」Slider（#164） | **未采用**：桌面弹层本来就有可拖拽的 SatVal 方块 + 色相条，鼠标拖拽比滑条更直接；本次只修了该弹层的 HEX 过滤、单行与滚动 |
+| `ThemeScreenAppIconOption` / 主题模式的 `selectable` + `selectableGroup` 语义（#164） | **未移植**：纯无障碍语义改动，桌面端对读屏依赖低，本轮不引入 |
+| `28bfa37`(#154) 新增友情链接、`0f27e67`(#155) README 截图替换 | **不移植**：纯 README / 图片资源，桌面仓库的 README 独立维护 |
+| 登录页 `liveRegion` 语义、`isError` → `enabled`、密码可见性图标语义（#164） | **未移植**：纯无障碍语义改动（桌面端对读屏依赖低），本轮不引入 |
+
+
 
 
 

@@ -34,7 +34,9 @@ internal data class MultiSelectAction(
 @Composable
 internal fun MultiSelectBar(
     count: Int,
-    actions: List<MultiSelectAction>
+    actions: List<MultiSelectAction>,
+    /** 有操作正在进行（转存/移动/分享等）：禁用点击并置灰，避免重复触发 */
+    busy: Boolean = false
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         Surface(
@@ -51,24 +53,27 @@ internal fun MultiSelectBar(
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val enabled = count > 0 && !busy
                 actions.forEach { action ->
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
-                            .clickable(onClick = action.onClick)
+                            .clickable(enabled = enabled, onClick = action.onClick)
                             .padding(horizontal = 8.dp, vertical = 4.dp)
                     ) {
                         Icon(
                             imageVector = action.icon,
                             contentDescription = action.label,
-                            tint = action.tint,
+                            tint = if (enabled) action.tint
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                             modifier = Modifier.size(22.dp)
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = action.label,
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant
+                            else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
                         )
                     }
                 }
