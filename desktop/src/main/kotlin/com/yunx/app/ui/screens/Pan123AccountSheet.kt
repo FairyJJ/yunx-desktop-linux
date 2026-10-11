@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.sp
 import com.yunx.app.data.db.Pan123AccountEntity
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
+import com.yunx.app.util.maskAccountText
 import com.yunx.app.util.DesktopActions
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -178,7 +179,8 @@ fun Pan123AccountSheet(
                 )
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    InfoRow(label = "登录账号", value = account.account.ifBlank { account.nickname })
+                    // 登录账号可能是手机号 / 邮箱，展示时脱敏
+                    InfoRow(label = "登录账号", value = maskAccountText(account.account.ifBlank { account.nickname }))
                     Spacer(modifier = Modifier.height(12.dp))
                     InfoRow(label = "登录时间", value = loginTime)
                     Spacer(modifier = Modifier.height(12.dp))

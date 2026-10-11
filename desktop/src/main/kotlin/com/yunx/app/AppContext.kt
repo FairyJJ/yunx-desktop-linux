@@ -14,7 +14,7 @@ import java.util.prefs.Preferences
  * 2. [dbDir] 数据库目录：默认＝[dataDir]，放 `yunx.db` 与 `credential.key`（两者必须同处一地）。
  * 3. [cacheDir] 缓存根目录：默认＝`<dataDir>/cache`，放下载分片、合并临时文件、JCEF 浏览器数据。
  *
- * ★ 目录配置存在 [miscPrefs]（java.util.prefs，与数据目录无关）——否则「把数据目录搬走」之后
+ * ★ 目录配置存在 [settingsPrefs]（java.util.prefs，与数据目录无关）——否则「把数据目录搬走」之后
  *   就再也读不到「该去哪找数据」了。启动时只读一次，因此改动天然是「重启后生效」。
  */
 object AppContext {
@@ -30,6 +30,15 @@ object AppContext {
 
     /** 杂项偏好（原 "yunx_prefs" SharedPreferences：onboarding_shown / ignored_version） */
     val miscPrefs: Preferences = Preferences.userRoot().node("yunx/misc")
+
+    /**
+     * 设置偏好：与 [com.yunx.app.data.prefs.SettingsRepository] **共用同一个节点**。
+     *
+     * ★ 储存目录的配置就存在这里。启动早期必须先读到它才能定好数据 / 缓存 / 数据库目录，
+     *   所以 AppContext 直接读这个节点 —— 若自己另开一个节点，就会出现「设置页写进 A、这里读 B」，
+     *   表现为切换目录后重启仍显示「当前生效（重启前）」（读不到配置 → 一直回退默认）。
+     */
+    val settingsPrefs: Preferences = Preferences.userRoot().node("yunx/settings")
 
     /** 迅雷设备指纹偏好（原 "xunlei_device_fp"） */
     val xunleiFpPrefs: Preferences = Preferences.userRoot().node("yunx/xunlei_fp")
@@ -93,40 +102,61 @@ object AppContext {
     }
 
     /**
-     * 清理「储存目录」迁移后留下的旧文件（只在**下一次启动**做，因为搬迁当下旧库/旧 JCEF 目录
-     * 仍被本进程占用，Windows 上删不掉）。仅当新位置确实可用时才删，避免把唯一一份数据删掉。
+     * 清理「储存目录」迁移后留下的旧文件（只在**下一次启动**做，因为搬迁当下旧库 / 旧 JCEF 目录
+     * 仍被本进程占用，Windows 上删不掉）。
+     *
+     * ★ 目的：不留下敏感残留 —— 旧库里是任务 / 历史 / 账号凭证，旧缓存里含网页版登录态 cookie。
+     * ★ 安全前提：只有新位置**确实可用**时才删旧位置（否则宁可留着下次重试，也不能删掉唯一一份数据）；
+     *   没删干净（文件仍被占用）时保留「待清理」标记，下次启动继续尝试。
      */
     private fun cleanupMigratedStorage() {
         runCatching {
-            val oldDb = miscPrefs.get(KEY_DB_MIGRATED_FROM, null)?.trim().orEmpty()
-            if (oldDb.isNotEmpty()) {
-                val oldDir = File(oldDb)
-                if (oldDir.canonicalPath != dbDir.canonicalPath && File(dbDir, "yunx.db").isFile) {
-                    // 只删库文件（含 WAL/SHM）；credential.key 留着，便于用户切回默认目录
-                    listOf("yunx.db", "yunx.db-wal", "yunx.db-shm").forEach {
+            // ---- 旧数据库位置 ----
+            val oldDbRaw = miscPrefs.get(KEY_DB_MIGRATED_FROM, null)?.trim().orEmpty()
+            if (oldDbRaw.isNotEmpty()) {
+                val oldDir = File(oldDbRaw)
+                if (sameDir(oldDir, dbDir)) {
+                    // 旧=新（配置没生效或又切了回来）：无事可做，撤掉标记
+                    miscPrefs.remove(KEY_DB_MIGRATED_FROM)
+                } else if (File(dbDir, "yunx.db").isFile) {
+                    // ★ 旧位置往往就是数据根目录（还含日志、缓存），所以只删库文件与凭证密钥，绝不删目录。
+                    //   credential.key 里是凭证主密钥，同属敏感残留，一并删掉；新位置已有副本，账号不会掉。
+                    listOf("yunx.db", "yunx.db-wal", "yunx.db-shm", "credential.key").forEach {
                         runCatching { File(oldDir, it).delete() }
                     }
-                    Log.i("YunX-DataDir", "已清理迁移后的旧数据库文件：${oldDir.absolutePath}")
+                    if (!File(oldDir, "yunx.db").exists() && !File(oldDir, "credential.key").exists()) {
+                        Log.i("YunX-DataDir", "已清理迁移后的旧数据库残留：${oldDir.absolutePath}")
+                        miscPrefs.remove(KEY_DB_MIGRATED_FROM)
+                    }
+                    // 没删干净（仍被占用）：保留标记，下次启动再试
                 }
-                miscPrefs.remove(KEY_DB_MIGRATED_FROM)
             }
-            val oldCache = miscPrefs.get(KEY_CACHE_MIGRATED_FROM, null)?.trim().orEmpty()
-            if (oldCache.isNotEmpty()) {
-                val oldDir = File(oldCache)
-                if (oldDir.canonicalPath != cacheDir.canonicalPath && oldDir.isDirectory &&
-                    cacheDir.isDirectory && cacheDir.listFiles()?.isNotEmpty() == true
-                ) {
-                    oldDir.deleteRecursively()
-                    Log.i("YunX-DataDir", "已清理迁移后的旧缓存目录：${oldDir.absolutePath}")
+
+            // ---- 旧缓存位置：下载分片 / JCEF 浏览器数据（含登录态 cookie），整棵删除 ----
+            val oldCacheRaw = miscPrefs.get(KEY_CACHE_MIGRATED_FROM, null)?.trim().orEmpty()
+            if (oldCacheRaw.isNotEmpty()) {
+                val oldDir = File(oldCacheRaw)
+                val newReady = cacheDir.isDirectory && cacheDir.listFiles()?.isNotEmpty() == true
+                when {
+                    sameDir(oldDir, cacheDir) -> miscPrefs.remove(KEY_CACHE_MIGRATED_FROM)
+                    // ★ 仅当新缓存目录确已就位才删旧目录，避免把唯一一份数据删掉
+                    oldDir.isDirectory && newReady && oldDir.deleteRecursively() -> {
+                        Log.i("YunX-DataDir", "已清理迁移后的旧缓存目录：${oldDir.absolutePath}")
+                        miscPrefs.remove(KEY_CACHE_MIGRATED_FROM)
+                    }
+                    // 新位置还没就位、或删除失败（文件被占用）：保留标记，下次启动再试
                 }
-                miscPrefs.remove(KEY_CACHE_MIGRATED_FROM)
             }
         }.onFailure { Log.w("YunX-DataDir", "清理迁移残留失败：${it.message}") }
     }
 
+    /** 两个 File 是否指向同一位置（canonicalPath 取不到时退回绝对路径比较） */
+    private fun sameDir(a: File, b: File): Boolean =
+        runCatching { a.canonicalPath == b.canonicalPath }.getOrDefault(a.absolutePath == b.absolutePath)
+
     /** 读取配置的目录；未配置或目录不可用（被删/无权限）时回退默认值，绝不让应用起不来 */
     private fun resolveConfiguredDir(key: String, defaultDir: File): File {
-        val raw = miscPrefs.get(key, null)?.trim().orEmpty()
+        val raw = settingsPrefs.get(key, null)?.trim().orEmpty()
         if (raw.isEmpty()) return defaultDir
         val configured = File(raw)
         if (configured.isDirectory) return configured

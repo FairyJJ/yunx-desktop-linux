@@ -32,6 +32,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DriveFileMove
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -44,7 +45,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -166,11 +166,6 @@ fun CloudDriveScreen(
             }
 
             is QuarkCloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
-                PullToRefreshBox(
-                    isRefreshing = viewModel.refreshing,
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize()
-                ) {
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
@@ -230,6 +225,9 @@ fun CloudDriveScreen(
                                     contentDescription = "新建文件夹",
                                     tint = MaterialTheme.colorScheme.primary
                                 )
+                            }
+                            IconButton(onClick = { viewModel.refresh() }) {
+                                Icon(imageVector = Icons.Outlined.Refresh, contentDescription = "刷新")
                             }
                         }
                     }
@@ -334,7 +332,6 @@ fun CloudDriveScreen(
                         )
                     )
                 }
-            }
         }
     }
     }

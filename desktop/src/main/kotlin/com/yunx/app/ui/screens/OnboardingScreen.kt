@@ -88,8 +88,8 @@ import kotlin.math.sin
 /** QQ 交流群群号（桌面端无 mqqapi scheme 保证，点击复制群号供用户在 QQ 中搜索） */
 private const val QQ_GROUP = "635207650"
 
-/** 引导页总页数：欢迎 / 功能特性 / 协议与声明 */
-private const val PAGE_COUNT = 3
+/** 引导页总页数：欢迎 / 功能特性 / 协议与声明 / 存储与安全 */
+private const val PAGE_COUNT = 4
 
 /** 页面正文的最大宽度：桌面窗口（默认 1100dp）远宽于手机，不限宽会把内容拉成一行超长文本 */
 private const val CONTENT_MAX_WIDTH = 560
@@ -99,21 +99,24 @@ private const val FADE_IN_MS = 170
 private const val FADE_OUT_MS = 140
 
 /**
- * 首次启动引导页（三页式，参照上游安卓端重做）：
+ * 首次启动引导页（四页式，参照上游安卓端重做）：
  * - 第 1 页：简洁欢迎 —— 图标 / 名称 / 版本 / 一句话 / 标签胶囊 / 开源仓库 / QQ 群；
  * - 第 2 页：功能特性 + 「完全免费」卡；
  * - 第 3 页：用户协议 + 免责声明 + 开源协议（长文，页内可滚动）；
+ * - 第 4 页：存储与安全 —— 下载保存位置 / 数据库位置 / 数据库加密等级（复用设置里的储存面板）；
  * - 底部导航：圆点指示器 + 「上一步 / 下一步 / 开始使用」，换页时按钮区淡入淡出；
  * - 背景：Animated Blob（流体渐变），自绘实现，不引第三方库。
  *
- * ★ 桌面端差异：上游第 3 页「权限准备」（通知/后台运行/存储）在桌面没有对应概念，故整页去掉，
- *   页数由 3 页保持不变（第 2 页换成了桌面版自己的功能特性）。
+ * ★ 桌面端差异：上游的「权限准备」（通知 / 后台运行 / 存储）在桌面没有对应概念，换成了桌面版自己的
+ *   功能特性页；第 4 页是本移植版新增的首次运行配置页。
  * ★ 限宽：手机端页面本来就只有几百 dp 宽，桌面窗口默认 1100dp —— 所有页面正文都限宽
  *   居中（[CONTENT_MAX_WIDTH]），否则一行文本横跨整个窗口，观感与上游差异极大。
  */
 @Composable
 fun OnboardingScreen(
     onFinish: () -> Unit,
+    /** 第 4 页「迁移数据库目录后立即重启」用：由 MainScreen 提供（拉起新实例 + 退出本进程） */
+    onRestartApp: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val pagerState = rememberPagerState(pageCount = { PAGE_COUNT })
@@ -152,7 +155,8 @@ fun OnboardingScreen(
                         when (index) {
                             0 -> WelcomePage()
                             1 -> FeaturesPage()
-                            else -> TermsPage()
+                            2 -> TermsPage()
+                            else -> StorageSetupPage(onRestartApp = onRestartApp)
                         }
                     }
                 }
@@ -664,6 +668,54 @@ private fun TermsCard(
                 )
             }
         }
+    }
+}
+
+// ==================== 第 4 页：存储与安全 ====================
+
+/**
+ * 第 4 页：首次启动就把「下载保存位置 / 数据库位置 / 数据库加密等级」设好。
+ * 直接复用「设置 → 储存目录」的同一套面板（[StorageSettingsPanel]）并隐藏缓存目录区块 ——
+ * 两处共用同一份搬迁 / 改档逻辑，不会分叉。
+ */
+@Composable
+private fun StorageSetupPage(onRestartApp: () -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Spacer(modifier = Modifier.height(20.dp))
+        Column(
+            modifier = Modifier
+                .widthIn(max = CONTENT_MAX_WIDTH.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+        ) {
+            Text(
+                text = "存储与安全",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "先定好下载文件的保存位置、数据存放位置与加密方式；之后随时可在「设置 → 储存目录」修改。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        // ★ 面板自带滚动：必须给它一个有界高度（weight）才能滚，否则会被内容撑开、顶掉底部导航
+        StorageSettingsPanel(
+            onRestartApp = onRestartApp,
+            showCacheDir = false,
+            // 左右 28dp 与上面的标题对齐（面板默认 16dp，这里改成与标题一致的 28dp）
+            contentPadding = PaddingValues(start = 28.dp, end = 28.dp, top = 0.dp, bottom = 20.dp),
+            modifier = Modifier
+                .widthIn(max = CONTENT_MAX_WIDTH.dp)
+                .fillMaxWidth()
+                .weight(1f)
+        )
     }
 }
 

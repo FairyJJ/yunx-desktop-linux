@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.CreateNewFolder
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -52,7 +53,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -175,11 +175,6 @@ fun UCCoudScreen(
             }
 
             is UCCloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
-                PullToRefreshBox(
-                    isRefreshing = viewModel.refreshing,
-                    onRefresh = { viewModel.refresh() },
-                    modifier = Modifier.fillMaxSize()
-                ) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier
@@ -238,6 +233,9 @@ fun UCCoudScreen(
                                                 contentDescription = "新建文件夹",
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
+                                        }
+                                        IconButton(onClick = { viewModel.refresh() }) {
+                                            Icon(imageVector = Icons.Outlined.Refresh, contentDescription = "刷新")
                                         }
                                     }
                                 }
@@ -303,7 +301,6 @@ fun UCCoudScreen(
                             )
                         }
                     }
-                }
 
                 // 返回顶部按钮（上滑离开顶部后显示；多选模式下上移避开底部批量栏）
                 ScrollToTopButton(

@@ -23,10 +23,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Bookmarks
 import androidx.compose.material.icons.outlined.Campaign
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -188,6 +192,8 @@ fun MainScreen(
     onMinimizeToTray: () -> Unit = {}
 ) {
     var currentTab by rememberSaveable { mutableStateOf(MainTab.Resolve) }
+    // 网盘页：四宫格 / 列表布局切换
+    var driveGridMode by rememberSaveable { mutableStateOf(false) }
     var showQuarkLogin by rememberSaveable { mutableStateOf(false) }
     var showUCLogin by rememberSaveable { mutableStateOf(false) }
     var showXunleiLogin by rememberSaveable { mutableStateOf(false) }
@@ -754,6 +760,30 @@ fun MainScreen(
                             Icon(Icons.Outlined.Bookmarks, contentDescription = "收藏网盘链接")
                         }
                     }
+                    // 网盘页标题右上角：四宫格 / 列表切换 + 刷新各网盘空间配额（原先是下拉刷新）
+                    if (currentTab == MainTab.Drive) {
+                        IconButton(onClick = { driveGridMode = !driveGridMode }) {
+                            if (driveGridMode) {
+                                Icon(Icons.AutoMirrored.Outlined.ViewList, contentDescription = "切换为列表")
+                            } else {
+                                Icon(Icons.Outlined.GridView, contentDescription = "切换为四宫格")
+                            }
+                        }
+                        val quotaLoading by driveQuotaViewModel.loading.collectAsState()
+                        IconButton(
+                            onClick = { driveQuotaViewModel.loadAll() },
+                            enabled = !quotaLoading
+                        ) {
+                            if (quotaLoading) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(20.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Outlined.Refresh, contentDescription = "刷新网盘状态")
+                            }
+                        }
+                    }
                 },
                 scrollBehavior = scrollBehavior,
                 colors = TopAppBarDefaults.largeTopAppBarColors(
@@ -797,6 +827,7 @@ fun MainScreen(
                         )
                         MainTab.Drive -> DriveScreen(
                             scrollBehavior = scrollBehavior,
+                            gridMode = driveGridMode,
                             quarkAccount = quarkAccount,
                             ucAccount = ucAccount,
                             xunleiAccount = xunleiAccount,
@@ -1115,7 +1146,9 @@ fun MainScreen(
                 onFinish = {
                     AppContext.miscPrefs.putBoolean("onboarding_shown", true)
                     showOnboarding = false
-                }
+                },
+                // 第 4 页迁移数据库目录后「立即重启」：与设置页共用同一条退出路径
+                onRestartApp = onExitApplication
             )
         }
 

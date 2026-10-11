@@ -51,6 +51,7 @@ import com.yunx.app.data.db.GuangYaAccountEntity
 import com.yunx.app.ui.SnackbarController
 import com.yunx.app.ui.components.FadeAlertDialog
 import com.yunx.app.ui.rememberGlobalSnackbarHostState
+import com.yunx.app.util.maskAccountText
 import com.yunx.app.util.DesktopActions
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -180,7 +181,8 @@ fun GuangYaAccountSheet(
                 Column(modifier = Modifier.padding(16.dp)) {
                     GuangYaInfoRow(
                         label = "登录账号",
-                        value = account.account.ifBlank { account.nickname.ifBlank { "光鸭用户" } }
+                        // 登录账号可能是手机号 / 邮箱，展示时脱敏
+                        value = maskAccountText(account.account.ifBlank { account.nickname.ifBlank { "光鸭用户" } })
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     GuangYaInfoRow(label = "登录时间", value = loginTime)

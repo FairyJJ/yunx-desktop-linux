@@ -23,8 +23,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.MoreVert
@@ -39,7 +41,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -76,6 +77,7 @@ import com.yunx.app.ui.viewmodel.Pan123CloudViewModel
 import com.yunx.app.ui.viewmodel.QuarkCloudViewModel
 import com.yunx.app.ui.viewmodel.UCCoudViewModel
 import com.yunx.app.ui.viewmodel.XunleiCloudViewModel
+import com.yunx.app.util.maskAccountText
 
 /**
  * 网盘账号展示模型。
@@ -160,6 +162,8 @@ fun DriveScreen(
     onGitHubBrowseHome: () -> Unit = {},
     /** 「更多」菜单中清除 Token（二次确认后回调） */
     onGitHubClearToken: () -> Unit = {},
+    /** 「四宫格（两列）/ 列表」布局：由 MainScreen 顶部栏右上角按钮切换 */
+    gridMode: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var showQuarkSheet by remember { mutableStateOf(false) }
@@ -199,70 +203,70 @@ fun DriveScreen(
     val quark = DriveAccount(
         id = "quark",
         name = "夸克网盘",
-        description = quarkAccount?.nickname ?: "点击登录，支持解析下载",
+        description = quarkAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "夸",
         isLoggedIn = quarkAccount != null
     )
     val uc = DriveAccount(
         id = "uc",
         name = "UC网盘",
-        description = ucAccount?.nickname ?: "点击登录，支持解析下载",
+        description = ucAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "UC",
         isLoggedIn = ucAccount != null
     )
     val xunlei = DriveAccount(
         id = "xunlei",
         name = "迅雷网盘",
-        description = xunleiAccount?.nickname ?: "点击登录，支持解析下载",
+        description = xunleiAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "迅",
         isLoggedIn = xunleiAccount != null
     )
     val baidu = DriveAccount(
         id = "baidu",
         name = "百度网盘",
-        description = baiduAccount?.nickname ?: "点击登录，支持解析下载",
+        description = baiduAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "度",
         isLoggedIn = baiduAccount != null
     )
     val c139 = DriveAccount(
         id = "c139",
         name = "139网盘",
-        description = c139Account?.nickname ?: "点击登录，支持解析下载",
+        description = c139Account?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "139",
         isLoggedIn = c139Account != null
     )
     val pan123 = DriveAccount(
         id = "pan123",
         name = "123云盘",
-        description = pan123Account?.nickname ?: "点击登录，支持解析下载",
+        description = pan123Account?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "123",
         isLoggedIn = pan123Account != null
     )
     val pan115 = DriveAccount(
         id = "pan115",
         name = "115网盘",
-        description = pan115Account?.nickname ?: "点击登录，支持解析下载",
+        description = pan115Account?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "115",
         isLoggedIn = pan115Account != null
     )
     val guangya = DriveAccount(
         id = "guangya",
         name = "光鸭云盘",
-        description = guangyaAccount?.nickname ?: "点击登录，支持解析下载",
+        description = guangyaAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "光",
         isLoggedIn = guangyaAccount != null
     )
     val ilanzou = DriveAccount(
         id = "ilanzou",
         name = "蓝奏云优享版",
-        description = ilanzouAccount?.nickname ?: "点击登录，支持解析下载",
+        description = ilanzouAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "优",
         isLoggedIn = ilanzouAccount != null
     )
     val lanzou = DriveAccount(
         id = "lanzou",
         name = "蓝奏云",
-        description = lanzouAccount?.nickname ?: "点击登录，支持解析下载",
+        description = lanzouAccount?.nickname?.let { maskAccountText(it) } ?: "点击登录，支持解析下载",
         avatarText = "蓝",
         isLoggedIn = lanzouAccount != null
     )
@@ -282,9 +286,6 @@ fun DriveScreen(
     LaunchedEffect(Unit) {
         driveQuotaViewModel.loadAll()
     }
-    // 下拉刷新状态：绑定空间配额加载中状态
-    val isRefreshing by driveQuotaViewModel.loading.collectAsState()
-
     // 账号列表 ↔ 夸克云盘 ↔ UC 云盘 ↔ 迅雷云盘 ↔ 百度云盘 ↔ 139 云盘 ↔ 123 云盘：平滑过渡（淡入 + 轻微缩放，不僵硬）
     AnimatedContent(
         targetState = when {
@@ -367,19 +368,17 @@ fun DriveScreen(
             onExit = { showLanzouCloud = false },
             onDownloadStarted = onDownloadStarted
         )
-            else -> PullToRefreshBox(
-                isRefreshing = isRefreshing,
-                onRefresh = { driveQuotaViewModel.loadAll() },
-                modifier = Modifier.fillMaxSize()
-            ) {
-                LazyColumn(
+            else -> LazyVerticalGrid(
+                // 四宫格 = 两列；列表 = 单列。切换列数复用同一棵列表，卡片状态不丢。
+                columns = GridCells.Fixed(if (gridMode) 2 else 1),
                 modifier = modifier
                     .fillMaxSize()
                     .nestedScroll(scrollBehavior.nestedScrollConnection),
                 contentPadding = PaddingValues(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                item {
+                item(key = "hint", span = { GridItemSpan(maxLineSpan) }) {
                     Text(
                         text = "登录后即可自动携带凭证解析与下载",
                         style = MaterialTheme.typography.bodyMedium,
@@ -558,7 +557,6 @@ fun DriveScreen(
                         onMoreClick = if (githubHasToken) { { showGitHubSheet = true } } else null
                     )
                 }
-            }
             }
         }
     }

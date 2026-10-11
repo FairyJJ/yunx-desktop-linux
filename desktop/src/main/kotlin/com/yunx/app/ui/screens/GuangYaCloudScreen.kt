@@ -34,6 +34,7 @@ import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.DriveFileMove
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,7 +52,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarScrollBehavior
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -180,12 +180,7 @@ fun GuangYaCloudScreen(
                 }
 
                 is GuangYaCloudUiState.Loaded -> Box(modifier = Modifier.fillMaxSize()) {
-                    PullToRefreshBox(
-                        isRefreshing = viewModel.refreshing,
-                        onRefresh = { viewModel.refresh() },
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        LazyColumn(
+                    LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
@@ -243,6 +238,9 @@ fun GuangYaCloudScreen(
                                                     contentDescription = "新建文件夹",
                                                     tint = MaterialTheme.colorScheme.primary
                                                 )
+                                            }
+                                            IconButton(onClick = { viewModel.refresh() }) {
+                                                Icon(imageVector = Icons.Outlined.Refresh, contentDescription = "刷新")
                                             }
                                         }
                                     }
@@ -308,7 +306,6 @@ fun GuangYaCloudScreen(
                                 )
                             }
                         }
-                    }
 
                     ScrollToTopButton(
                         listState = listState,

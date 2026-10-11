@@ -1,9 +1,13 @@
 package com.yunx.app.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,11 +19,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.ViewList
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material3.Button
@@ -44,12 +53,20 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.yunx.app.AppContext
 import com.yunx.app.data.prefs.SettingsRepository
 import com.yunx.app.data.security.DbEncryptionLevel
@@ -93,6 +110,65 @@ fun StorageDirectoryScreen(
     modifier: Modifier = Modifier
 ) {
     val snackbarHostState = rememberGlobalSnackbarHostState()
+    // 列表 / 四宫格切换（记住用户的选择）
+    var gridMode by rememberSaveable { mutableStateOf(false) }
+
+    BackHandler { onBack() }
+
+    Scaffold(
+        modifier = modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surface,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        topBar = {
+            TopAppBar(
+                title = { Text("储存目录", style = MaterialTheme.typography.titleLarge) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    // 右上角：在「四宫格 / 列表」之间切换
+                    IconButton(onClick = { gridMode = !gridMode }) {
+                        if (gridMode) {
+                            Icon(Icons.AutoMirrored.Outlined.ViewList, contentDescription = "切换为列表")
+                        } else {
+                            Icon(Icons.Outlined.GridView, contentDescription = "切换为四宫格")
+                        }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            )
+        }
+    ) { innerPadding ->
+        StorageSettingsPanel(
+            onRestartApp = onRestartApp,
+            gridMode = gridMode,
+            modifier = Modifier.padding(innerPadding)
+        )
+    }
+}
+
+/**
+ * 储存设置面板：下载保存目录 / 下载缓存目录 / 数据库位置 / 数据库加密等级。
+ *
+ * ★ 抽成独立 Composable：「设置 → 储存目录」二级页与「首次启动引导页第 4 页」都用它，
+ *   以免两处逻辑分叉。面板自带滚动与全屏遮罩，不含 Scaffold / 顶栏。
+ *
+ * @param showCacheDir 是否显示「下载缓存目录」区块（引导页只展示保存目录 / 数据库位置 / 加密等级，传 false）
+ */
+@Composable
+fun StorageSettingsPanel(
+    onRestartApp: () -> Unit,
+    showCacheDir: Boolean = true,
+    /** 四宫格（两列）还是列表（单列）；引导页固定列表，设置页由右上角按钮切换 */
+    gridMode: Boolean = false,
+    /** 内容内边距：二级页用默认 16dp；引导页第 4 页传 horizontal = 28dp 以与页面标题左右对齐 */
+    contentPadding: PaddingValues = PaddingValues(16.dp),
+    modifier: Modifier = Modifier
+) {
     val scope = rememberCoroutineScope()
     val settingsRepo = remember { SettingsRepository() }
 
@@ -121,8 +197,6 @@ fun StorageDirectoryScreen(
     // 数据库加密等级（立即生效，不需要重启）；显示**实际**档位而非偏好值
     var encLevel by remember { mutableStateOf(DbEncryptionManager.effectiveLevel()) }
     var pendingLevel by remember { mutableStateOf<DbEncryptionLevel?>(null) }
-
-    BackHandler { onBack() }
 
     /** 写配置：默认位置存 null（跟随数据根目录），其余存绝对路径 */
     fun persist(kind: StorageKind, target: File) {
@@ -221,163 +295,168 @@ fun StorageDirectoryScreen(
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            TopAppBar(
-                title = { Text("储存目录", style = MaterialTheme.typography.titleLarge) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
-                )
-            )
-        }
-    ) { innerPadding ->
-        Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+    // ★ 底色交给调用方：设置页由外层 Scaffold 铺 surface，引导页第 4 页铺的是 Blob 流体背景。
+    //   这里必须透明，否则会在引导页上盖出一块纯色矩形、把流体背景挡掉。
+    Surface(modifier = modifier.fillMaxSize(), color = Color.Transparent) {
+        Box(modifier = Modifier.fillMaxSize()) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .padding(16.dp)
+                    .padding(contentPadding)
             ) {
-                Text(
-                    text = "目录改动需要**重启应用**生效；切换时会把旧位置的数据自动搬到新位置（旧文件留到下" +
-                        "次启动再清理）。",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                InfoBanner(
+                    "目录改动需要**重启应用**生效；切换时会把旧位置的数据自动搬到新位置" +
+                        "（旧文件留到下次启动再清理）。"
                 )
                 Spacer(Modifier.height(16.dp))
 
-                // ===== 下载保存目录 =====
-                SectionCard(
-                    icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
-                    title = "下载保存目录",
-                    subtitle = "下载完成后文件的落盘位置（默认：系统「下载」文件夹）"
-                ) {
-                    PathRow(
-                        path = downloadDir ?: DesktopActions.defaultDownloadDir.absolutePath,
-                        label = if (downloadDir != null) "已自定义" else "系统默认 Download"
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = {
-                            scope.launch {
-                                // 原生目录选择器在独立线程打开，避免阻塞 UI 线程
-                                val dir = withContext(Dispatchers.IO) { DesktopActions.pickDirectory() }
-                                if (dir != null) {
-                                    settingsRepo.downloadDirUri = dir
-                                    downloadDir = dir
-                                    SnackbarController.show("下载保存目录已更新")
+                // 四个区块：列表模式纵向铺开，四宫格模式两列两行。
+                // ★ 写成 lambda 列表（而不是顺序书写）是为了同一份内容能在两种布局里复用，不必两处维护。
+                val downloadSection: @Composable () -> Unit = {
+                    // ===== 下载保存目录 =====
+                    SectionCard(
+                        icon = { Icon(Icons.Outlined.FolderOpen, contentDescription = null) },
+                        title = "下载保存目录",
+                        subtitle = "下载完成后文件的落盘位置（默认：系统「下载」文件夹）"
+                    ) {
+                        PathRow(
+                            path = downloadDir ?: DesktopActions.defaultDownloadDir.absolutePath,
+                            label = if (downloadDir != null) "已自定义" else "系统默认 Download"
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(onClick = {
+                                scope.launch {
+                                    // 原生目录选择器在独立线程打开，避免阻塞 UI 线程
+                                    val dir = withContext(Dispatchers.IO) { DesktopActions.pickDirectory() }
+                                    if (dir != null) {
+                                        settingsRepo.downloadDirUri = dir
+                                        downloadDir = dir
+                                        SnackbarController.show("下载保存目录已更新")
+                                    }
                                 }
+                            }) { Text("选择目录") }
+                            if (downloadDir != null) {
+                                TextButton(onClick = {
+                                    settingsRepo.downloadDirUri = null
+                                    downloadDir = null
+                                    SnackbarController.show("已恢复默认下载目录")
+                                }) { Text("恢复默认") }
                             }
-                        }) { Text("选择目录") }
-                        if (downloadDir != null) {
-                            TextButton(onClick = {
-                                settingsRepo.downloadDirUri = null
-                                downloadDir = null
-                                SnackbarController.show("已恢复默认下载目录")
-                            }) { Text("恢复默认") }
                         }
                     }
                 }
-
-                Spacer(Modifier.height(16.dp))
-
-                // ===== 下载缓存目录 =====
-                SectionCard(
-                    icon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
-                    title = "下载缓存目录",
-                    subtitle = "下载分片、合并临时文件与内嵌浏览器数据（含网页版登录态，约 200MB Chromium 解包）"
-                ) {
-                    PresetRows(
-                        configured = configuredCacheDir,
-                        defaultDir = defaultCacheDir,
-                        appDir = appCacheDir,
-                        defaultLabel = "默认（用户目录）",
-                        onPick = { choose(StorageKind.CACHE, it) },
-                        onPickCustom = { pickCustom(scope, StorageKind.CACHE, ::choose) }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    PathRow(path = configuredCacheDir.absolutePath, label = "重启后生效")
-                    if (!samePath(configuredCacheDir, effectiveCacheDir)) {
-                        Spacer(Modifier.height(4.dp))
-                        HintRow("当前生效（重启前）：${effectiveCacheDir.absolutePath}")
+                val cacheSection: @Composable () -> Unit = {
+                    // ===== 下载缓存目录 =====
+                    SectionCard(
+                        icon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
+                        title = "下载缓存目录",
+                        subtitle = "下载分片、合并临时文件与内嵌浏览器数据（含网页版登录态，约 200MB Chromium 解包）"
+                    ) {
+                        PresetChips(
+                            configured = configuredCacheDir,
+                            defaultDir = defaultCacheDir,
+                            appDir = appCacheDir,
+                            onPick = { choose(StorageKind.CACHE, it) },
+                            onPickCustom = { pickCustom(scope, StorageKind.CACHE, ::choose) }
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        DirPathRows(configuredCacheDir, effectiveCacheDir)
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(onClick = {
+                            if (!DesktopActions.openDirectory(configuredCacheDir.absolutePath)) {
+                                SnackbarController.show("无法打开该目录")
+                            }
+                        }) { Text("打开所在文件夹") }
                     }
-                    Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = {
-                        if (!DesktopActions.openDirectory(configuredCacheDir.absolutePath)) {
-                            SnackbarController.show("无法打开该目录")
-                        }
-                    }) { Text("打开所在文件夹") }
                 }
-
-                Spacer(Modifier.height(16.dp))
-
-                // ===== 数据库位置 =====
-                SectionCard(
-                    icon = { Icon(Icons.Outlined.Storage, contentDescription = null) },
-                    title = "数据库位置",
-                    subtitle = "任务、收藏、历史与**网盘账号凭证**（yunx.db + credential.key，两者必须同处一地）"
-                ) {
-                    PresetRows(
-                        configured = configuredDbDir,
-                        defaultDir = defaultDbDir,
-                        appDir = appDbDir,
-                        defaultLabel = "默认（用户目录）",
-                        onPick = { choose(StorageKind.DB, it) },
-                        onPickCustom = { pickCustom(scope, StorageKind.DB, ::choose) }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    PathRow(path = configuredDbDir.absolutePath, label = "重启后生效")
-                    if (!samePath(configuredDbDir, effectiveDbDir)) {
+                val dbSection: @Composable () -> Unit = {
+                    // ===== 数据库位置 =====
+                    SectionCard(
+                        icon = { Icon(Icons.Outlined.Storage, contentDescription = null) },
+                        title = "数据库位置",
+                        subtitle = "任务、收藏、历史与**网盘账号凭证**（yunx.db + credential.key，两者必须同处一地）"
+                    ) {
+                        PresetChips(
+                            configured = configuredDbDir,
+                            defaultDir = defaultDbDir,
+                            appDir = appDbDir,
+                            onPick = { choose(StorageKind.DB, it) },
+                            onPickCustom = { pickCustom(scope, StorageKind.DB, ::choose) }
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        DirPathRows(configuredDbDir, effectiveDbDir)
+                        Spacer(Modifier.height(6.dp))
+                        TextButton(onClick = {
+                            if (!DesktopActions.openDirectory(configuredDbDir.absolutePath)) {
+                                SnackbarController.show("无法打开该目录")
+                            }
+                        }) { Text("打开所在文件夹") }
                         Spacer(Modifier.height(4.dp))
-                        HintRow("当前生效（重启前）：${effectiveDbDir.absolutePath}")
-                    }
-                    Spacer(Modifier.height(6.dp))
-                    TextButton(onClick = {
-                        if (!DesktopActions.openDirectory(configuredDbDir.absolutePath)) {
-                            SnackbarController.show("无法打开该目录")
+                        HintRow("搬迁时会连同 credential.key 一起搬走 —— 库里的凭证是用它加密的，分开会全部解不开。")
+                        if (encLevel.isMachineBound && !samePath(configuredDbDir, defaultDbDir)) {
+                            Spacer(Modifier.height(6.dp))
+                            HintRow(
+                                "⚠ 数据库已不在用户目录，而当前加密等级「${encLevel.label}」绑定本机：" +
+                                    "若要把数据当作**便携版**带到别的电脑使用，请把下面的加密等级切回「宽松」，否则新机器上凭证无法解密。"
+                            )
                         }
-                    }) { Text("打开所在文件夹") }
-                    Spacer(Modifier.height(4.dp))
-                    HintRow("搬迁时会连同 credential.key 一起搬走 —— 库里的凭证是用它加密的，分开会全部解不开。")
-                    if (encLevel.isMachineBound && !samePath(configuredDbDir, defaultDbDir)) {
+                    }
+                }
+                val encryptSection: @Composable () -> Unit = {
+                    // ===== 数据库加密等级 =====
+                    SectionCard(
+                        icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
+                        title = "数据库加密等级",
+                        subtitle = "控制凭证主密钥（credential.key）怎么保护；改档只重新包裹密钥，不动库内数据、立即生效"
+                    ) {
+                        DbEncryptionLevel.entries.forEach { level ->
+                            val supported = level.isSupported
+                            PresetRow(
+                                title = if (level == DbEncryptionLevel.NORMAL) "${level.label}（默认）" else level.label,
+                                subtitle = levelDescription(level, supported),
+                                selected = encLevel == level,
+                                enabled = supported && !busy,
+                                onClick = { if (supported && level != encLevel) pendingLevel = level }
+                            )
+                        }
                         Spacer(Modifier.height(6.dp))
                         HintRow(
-                            "⚠ 数据库已不在用户目录，而当前加密等级「${encLevel.label}」绑定本机：" +
-                                "若要把数据当作**便携版**带到别的电脑使用，请把下面的加密等级切回「宽松」，否则新机器上凭证无法解密。"
+                            "三档都只保护密钥：库内**账号凭证**始终是 AES-256-GCM 密文，" +
+                                "但任务文件名 / URL / 保存路径等元数据在三档下都是明文（整库加密需要 SQLCipher，暂未支持）。"
                         )
                     }
                 }
 
-                Spacer(Modifier.height(16.dp))
+                val sections = buildList {
+                    add(downloadSection)
+                    if (showCacheDir) add(cacheSection)
+                    add(dbSection)
+                    add(encryptSection)
+                }
 
-                // ===== 数据库加密等级 =====
-                SectionCard(
-                    icon = { Icon(Icons.Outlined.Lock, contentDescription = null) },
-                    title = "数据库加密等级",
-                    subtitle = "控制凭证主密钥（credential.key）怎么保护；改档只重新包裹密钥，不动库内数据、立即生效"
-                ) {
-                    DbEncryptionLevel.entries.forEach { level ->
-                        val supported = level.isSupported
-                        PresetRow(
-                            title = if (level == DbEncryptionLevel.NORMAL) "${level.label}（默认）" else level.label,
-                            subtitle = levelDescription(level, supported),
-                            selected = encLevel == level,
-                            enabled = supported && !busy,
-                            onClick = { if (supported && level != encLevel) pendingLevel = level }
-                        )
+                if (gridMode) {
+                    // 四宫格：两列并排，两行
+                    sections.chunked(2).forEach { pair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.Top
+                        ) {
+                            pair.forEach { section ->
+                                Box(modifier = Modifier.weight(1f)) { section() }
+                            }
+                            // 奇数个时补一个占位，避免最后一张卡被拉成整行宽
+                            if (pair.size == 1) Spacer(Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(12.dp))
                     }
-                    Spacer(Modifier.height(6.dp))
-                    HintRow(
-                        "三档都只保护密钥：库内**账号凭证**始终是 AES-256-GCM 密文，" +
-                            "但任务文件名 / URL / 保存路径等元数据在三档下都是明文（整库加密需要 SQLCipher，暂未支持）。"
-                    )
+                } else {
+                    sections.forEachIndexed { index, section ->
+                        if (index > 0) Spacer(Modifier.height(16.dp))
+                        section()
+                    }
                 }
 
                 Spacer(Modifier.height(24.dp))
@@ -450,7 +529,7 @@ fun StorageDirectoryScreen(
             visible = true,
             onDismissRequest = { pendingLevel = null },
             title = { Text("切换为「${target.label}」？") },
-            text = { Text(levelWarning(target)) },
+            text = { Text(emphasize(levelWarning(target))) },
             confirmButton = {
                 TextButton(onClick = { switchLevel(target) }) { Text("切换") }
             },
@@ -525,7 +604,7 @@ private fun SectionCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Medium)
                     Text(
-                        text = subtitle,
+                        text = emphasize(subtitle),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -539,13 +618,15 @@ private fun SectionCard(
     }
 }
 
-/** 三个预设的单选行（默认 / 应用所在目录 / 自定义） */
+/**
+ * 三个预设的并排胶囊（默认 / 应用所在目录 / 自定义）。
+ * ★ 不再把三项纵向铺开：纵向三行会把卡片撑得很高，并排一行后卡片立刻变矮。
+ */
 @Composable
-private fun PresetRows(
+private fun PresetChips(
     configured: File,
     defaultDir: File,
     appDir: File,
-    defaultLabel: String,
     onPick: (File) -> Unit,
     onPickCustom: () -> Unit
 ) {
@@ -554,26 +635,70 @@ private fun PresetRows(
         samePath(configured, defaultDir) -> StoragePreset.DEFAULT
         else -> StoragePreset.CUSTOM
     }
-    Column(modifier = Modifier.fillMaxWidth()) {
-        PresetRow(
-            title = defaultLabel,
-            subtitle = defaultDir.absolutePath,
-            selected = current == StoragePreset.DEFAULT
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectableGroup(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        PresetChip(
+            label = "默认",
+            selected = current == StoragePreset.DEFAULT,
+            modifier = Modifier.weight(1f)
         ) { onPick(defaultDir) }
-        PresetRow(
-            title = "应用所在目录（便携）",
-            subtitle = appDir.absolutePath,
-            selected = current == StoragePreset.APP_DIR
+        PresetChip(
+            label = "应用目录",
+            selected = current == StoragePreset.APP_DIR,
+            modifier = Modifier.weight(1f)
         ) { onPick(appDir) }
-        PresetRow(
-            title = "自定义",
-            subtitle = if (current == StoragePreset.CUSTOM) {
-                configured.absolutePath
-            } else {
-                "点击选择其它文件夹"
-            },
+        PresetChip(
+            label = "自定义",
             selected = current == StoragePreset.CUSTOM,
+            modifier = Modifier.weight(1f),
             onClick = onPickCustom
+        )
+    }
+}
+
+/** 单个预设胶囊（参考外观页的主题模式胶囊：选中铺 secondaryContainer，未选中用容器灰） */
+@Composable
+private fun PresetChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val containerColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.secondaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        },
+        animationSpec = tween(180),
+        label = "presetChipContainer"
+    )
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) {
+            MaterialTheme.colorScheme.onSecondaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+        animationSpec = tween(180),
+        label = "presetChipContent"
+    )
+    Box(
+        modifier = modifier
+            .clip(CircleShape)
+            .background(containerColor)
+            .selectable(selected = selected, onClick = onClick)
+            .padding(vertical = 9.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            color = contentColor,
+            maxLines = 1
         )
     }
 }
@@ -586,31 +711,67 @@ private fun PresetRow(
     enabled: Boolean = true,
     onClick: () -> Unit
 ) {
-    val contentColor = if (enabled) {
-        MaterialTheme.colorScheme.onSurface
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+    val scheme = MaterialTheme.colorScheme
+    val highlighted = selected && enabled
+    // 选中行铺一层柔和底色 + 圆角，比只换一个单选圆点更容易一眼看到当前选择
+    val containerColor by animateColorAsState(
+        targetValue = if (highlighted) scheme.secondaryContainer else Color.Transparent,
+        animationSpec = tween(160),
+        label = "presetContainer"
+    )
+    val titleColor = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+        highlighted -> scheme.onSecondaryContainer
+        else -> scheme.onSurface
+    }
+    val subtitleColor = when {
+        !enabled -> scheme.onSurface.copy(alpha = 0.38f)
+        highlighted -> scheme.onSecondaryContainer.copy(alpha = 0.85f)
+        else -> scheme.onSurfaceVariant
     }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 44.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(containerColor)
+            .heightIn(min = 48.dp)
             .selectable(selected = selected, enabled = enabled, onClick = onClick)
-            .padding(vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioButton(selected = selected, onClick = null, enabled = enabled)
         Spacer(Modifier.width(8.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = contentColor)
             Text(
-                text = subtitle,
+                text = emphasize(title),
+                style = MaterialTheme.typography.bodyLarge,
+                color = titleColor
+            )
+            Text(
+                text = emphasize(subtitle),
                 style = MaterialTheme.typography.bodySmall,
-                color = if (enabled) MaterialTheme.colorScheme.onSurfaceVariant else contentColor,
+                color = subtitleColor,
                 maxLines = 3,
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/**
+ * 目录路径预览：「当前生效」与「重启后生效」分成两条独立展示。
+ *
+ * ★ 不能只挂一句「重启后生效」：当配置与生效值相同（没有待生效改动）时也那样写，
+ *   用户会以为还得重启；反过来把两者挤在一句里同样容易看错。分开列最清楚。
+ */
+@Composable
+private fun DirPathRows(configuredDir: File, effectiveDir: File) {
+    if (samePath(configuredDir, effectiveDir)) {
+        PathRow(path = configuredDir.absolutePath, label = "当前生效")
+    } else {
+        PathRow(path = configuredDir.absolutePath, label = "重启后生效")
+        Spacer(Modifier.height(6.dp))
+        PathRow(path = effectiveDir.absolutePath, label = "当前生效（重启前）")
     }
 }
 
@@ -641,10 +802,40 @@ private fun PathRow(path: String, label: String) {
 @Composable
 private fun HintRow(text: String) {
     Text(
-        text = text,
+        text = emphasize(text),
         style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        lineHeight = 18.sp
     )
+}
+
+/** 顶部说明条：圆角底 + 信息图标，比裸段落更耐看 */
+@Composable
+private fun InfoBanner(text: String) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.secondaryContainer
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Info,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Spacer(Modifier.width(10.dp))
+            Text(
+                text = emphasize(text),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                lineHeight = 18.sp
+            )
+        }
+    }
 }
 
 // ---------- 工具 ----------
@@ -683,6 +874,27 @@ private fun pickCustom(scope: CoroutineScope, kind: StorageKind, onChosen: (Stor
     scope.launch {
         val picked = withContext(Dispatchers.IO) { DesktopActions.pickDirectory() }
         if (picked != null) onChosen(kind, File(picked))
+    }
+}
+
+/**
+ * 把字符串里的 `**粗体**` 标记渲染成真正的粗体。
+ * Compose 的 Text 不做 markdown 解析，直接传原串会把星号也照原样显示出来（很丑）。
+ */
+private fun emphasize(text: String): AnnotatedString = buildAnnotatedString {
+    var index = 0
+    while (index < text.length) {
+        val open = text.indexOf("**", index)
+        val close = if (open < 0) -1 else text.indexOf("**", open + 2)
+        if (open < 0 || close < 0) {
+            append(text.substring(index))
+            break
+        }
+        append(text.substring(index, open))
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+            append(text.substring(open + 2, close))
+        }
+        index = close + 2
     }
 }
 

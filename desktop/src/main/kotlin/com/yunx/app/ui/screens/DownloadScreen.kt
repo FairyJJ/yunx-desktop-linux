@@ -62,6 +62,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -447,7 +448,9 @@ private fun FolderDownloadGroup(
     onRedownload: (DownloadTaskEntity) -> Unit,
     onDebug: ((DownloadTaskEntity) -> Unit)? = null
 ) {
-    var expanded by remember { mutableStateOf(true) }
+    // ★ 用 rememberSaveable（而非 remember）：切到别的 Tab 再切回来时，
+    //   下载页组合会被重建，remember 会让折叠状态复位成「展开」。
+    var expanded by rememberSaveable(folder) { mutableStateOf(true) }
     val completed = tasks.count { it.status == DownloadTaskEntity.STATUS_COMPLETED }
     val totalSize = tasks.sumOf { it.totalSize }
     // 聚合显示钳制：任何单项竞态残留都不会让"已下载 > 总大小"
