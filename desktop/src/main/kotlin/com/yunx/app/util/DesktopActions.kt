@@ -58,6 +58,42 @@ object DesktopActions {
         }.getOrDefault(false)
     }
 
+    /** 在资源管理器中打开目录（不存在时先创建） */
+    fun openDirectory(path: String): Boolean {
+        val dir = File(path)
+        if (!dir.isDirectory && !dir.mkdirs()) return false
+        return runCatching {
+            ProcessBuilder("explorer.exe", dir.absolutePath).start()
+            true
+        }.getOrDefault(false)
+    }
+
+    /**
+     * 重启应用：延迟 2 秒后拉起新的实例（给本进程留出退出的时间，避免两个实例同时抢数据库/缓存），
+     * 返回是否成功发起。调用方应在返回 true 后立即退出本进程。
+     *
+     * 拿不到启动器 exe（开发运行 `gradle run`）时返回 false，由调用方提示手动重启。
+     */
+    fun restartApp(): Boolean {
+        val exe = launcherExe() ?: return false
+        return runCatching {
+            // 用 cmd 延迟启动：本进程马上就会退出，必须等它把文件句柄都放掉
+            ProcessBuilder(
+                "cmd.exe", "/c",
+                "timeout /t 2 /nobreak >nul & start \"\" \"${exe.absolutePath}\""
+            ).directory(exe.parentFile).start()
+            true
+        }.getOrDefault(false)
+    }
+
+    /** 便携版/安装版的启动器 exe：优先 jpackage 注入的路径，否则取工作目录下的 YunX-Desktop.exe */
+    private fun launcherExe(): File? {
+        System.getProperty("jpackage.app-path")?.let { p ->
+            File(p).takeIf { it.isFile }?.let { return it }
+        }
+        return File(File(System.getProperty("user.dir") ?: "."), "YunX-Desktop.exe").takeIf { it.isFile }
+    }
+
     /** 用系统默认浏览器打开链接 */
     fun openUrl(url: String) {
         runCatching {

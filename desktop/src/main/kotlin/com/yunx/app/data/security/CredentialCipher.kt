@@ -20,13 +20,14 @@ internal interface CredentialCipher {
 
 /**
  * 桌面版凭证加密：AES-256-GCM。
- * 密钥为首次启动生成的随机 32 字节，保存在 <dataDir>/credential.key。
+ * 密钥为首次启动生成的随机 32 字节，保存在 `<数据库目录>/credential.key`
+ * （数据库目录默认＝数据根目录，可在「设置 → 储存目录」改；密钥必须跟着库走，否则库里的密文全部解不开）。
  * 输出格式与原 Android 版完全相同："yunx:v1:<iv Base64>:<ct Base64>"，AAD = purpose。
  */
 internal class FileCredentialCipher : CredentialCipher {
 
     private val key: SecretKeySpec by lazy {
-        val keyFile = File(AppContext.dataDir, "credential.key")
+        val keyFile = resolveKeyFile()
         val bytes = if (keyFile.exists()) {
             keyFile.readBytes()
         } else {
@@ -37,6 +38,21 @@ internal class FileCredentialCipher : CredentialCipher {
         }
         require(bytes.size == 32) { "invalid credential key file" }
         SecretKeySpec(bytes, "AES")
+    }
+
+    /**
+     * 密钥文件位置：**先看数据库目录，再看数据根目录**（只读回退，不在数据根目录新建）。
+     *
+     * 回退这一条是为兼容两种情况：① 老版本把密钥放在数据根目录（数据库目录＝数据根目录，同一个文件）；
+     * ② 用户把数据库/缓存切到别处、但没跟着搬密钥 —— 只要数据根目录里还有原密钥，密文就仍然解得开，
+     * 绝不会因为「找不到密钥」而新建一把随机密钥（那会让所有已存凭证解不开、进而被自愈逻辑清空）。
+     */
+    private fun resolveKeyFile(): File {
+        val primary = File(AppContext.dbDir, KEY_FILE_NAME)
+        if (primary.exists()) return primary
+        val legacy = File(AppContext.dataDir, KEY_FILE_NAME)
+        if (legacy.exists() && legacy.canonicalPath != primary.canonicalPath) return legacy
+        return primary
     }
 
     override fun encrypt(plaintext: String, purpose: String): String {
@@ -76,5 +92,6 @@ internal class FileCredentialCipher : CredentialCipher {
 
     private companion object {
         const val PREFIX = "yunx:v1:"
+        const val KEY_FILE_NAME = "credential.key"
     }
 }

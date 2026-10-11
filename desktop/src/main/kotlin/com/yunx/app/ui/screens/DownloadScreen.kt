@@ -75,6 +75,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.yunx.app.data.db.DownloadTaskEntity
+import com.yunx.app.data.download.DownloadSaver
 import com.yunx.app.data.download.DownloadStats
 import com.yunx.app.data.download.MagnetLink
 import com.yunx.app.ui.SnackbarController
@@ -1007,7 +1008,12 @@ private fun AddDownloadDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(
-                    text = "下载文件将保存到 ${DesktopActions.defaultDownloadDir.absolutePath} 目录",
+                    // 自定义保存目录在「设置 → 储存目录」里改，这里如实显示当前生效的位置
+                    text = "下载文件将保存到 ${
+                        DownloadSaver.resolveSaveDir(
+                            com.yunx.app.data.prefs.SettingsRepository().downloadDirUri
+                        ).absolutePath
+                    } 目录",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

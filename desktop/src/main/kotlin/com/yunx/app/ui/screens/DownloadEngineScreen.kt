@@ -60,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.yunx.app.data.download.DownloadSaver
 import com.yunx.app.data.gopeed.GopeedEngine
 import com.yunx.app.data.gopeed.GopeedKernelProvisioner
 import com.yunx.app.data.prefs.SettingsRepository
@@ -136,7 +137,7 @@ fun DownloadEngineScreen(
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    GopeedEngine.start(DesktopActions.defaultDownloadDir)
+                    GopeedEngine.start(DownloadSaver.resolveSaveDir(settingsRepo.downloadDirUri))
                     GopeedEngine.version()
                 }
             }
@@ -316,7 +317,7 @@ fun DownloadEngineScreen(
                     }
                 )
                 Spacer(Modifier.height(6.dp))
-                KeyValueRow("落盘目录", DesktopActions.defaultDownloadDir.absolutePath)
+                KeyValueRow("落盘目录", DownloadSaver.resolveSaveDir(settingsRepo.downloadDirUri).absolutePath)
 
                 Spacer(Modifier.height(14.dp))
 
@@ -348,7 +349,7 @@ fun DownloadEngineScreen(
                                     busy = true
                                     val r = withContext(Dispatchers.IO) {
                                         runCatching {
-                                            GopeedEngine.restart(DesktopActions.defaultDownloadDir)
+                                            GopeedEngine.restart(DownloadSaver.resolveSaveDir(settingsRepo.downloadDirUri))
                                         }
                                     }
                                     busy = false

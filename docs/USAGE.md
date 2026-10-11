@@ -47,14 +47,24 @@ GitHub 为代码托管平台，链接（仓库 / 账号 / 文件直链）在「�
 | 路径 | 内容 |
 | --- | --- |
 | `%USERPROFILE%\.yunx-desktop\` | 应用数据根目录（可用环境变量 `YUNX_DESKTOP_DATA_DIR` 覆盖） |
-| `%USERPROFILE%\.yunx-desktop\yunx.db` | 任务与凭证库（SQLite） |
-| `%USERPROFILE%\.yunx-desktop\credential.key` | 凭证加密密钥 |
-| `%USERPROFILE%\.yunx-desktop\cache\download_tmp\` | 下载分片临时目录 |
+| `%USERPROFILE%\.yunx-desktop\yunx.db` | 任务与凭证库（SQLite；位置可在「设置 → 储存目录」改） |
+| `%USERPROFILE%\.yunx-desktop\credential.key` | 凭证加密密钥（AES-256-GCM；跟着数据库目录走） |
+| `%USERPROFILE%\.yunx-desktop\cache\download_tmp\` | 下载分片临时目录（缓存目录可在「设置 → 储存目录」改） |
 | `%USERPROFILE%\.yunx-desktop\files\yunx-desktop.log` | 运行日志（设置页可导出） |
 | 注册表 `HKEY_CURRENT_USER\Software\JavaSoft\Prefs\yunx` | 偏好设置 |
 
 > 旧版本使用的 `%USERPROFILE%\.yunx-pc\` 会在首次启动时**自动整体迁移**为 `.yunx-desktop`
 > （登录态、下载任务、分片一并保留），无需手动处理。
+
+### 储存目录（设置 → 储存目录）
+
+三块内容都可在应用内更改，改动**重启后生效**，切换时会把旧位置的数据自动搬到新位置：
+
+- **下载保存目录**：下载完成后文件的落盘位置（默认：系统「下载」文件夹）；内置下载器与 Gopeed 引擎共用。
+- **下载缓存目录**：下载分片、合并临时文件与内嵌浏览器数据（含网页版登录态）；预设三档 ——
+  默认（用户目录）/ 应用所在目录（便携）/ 自定义。内嵌浏览器的 ~200MB 解包文件不搬，会在启动时自动重建。
+- **数据库位置**：`yunx.db` 与 `credential.key`（**必须同处一地** —— 库内凭证用它加密，分开会全部解不开）；
+  预设同上三档。目标目录已存在 `yunx.db` 时会拒绝切换，避免两套数据混在一起。
 
 ## 托盘与窗口
 

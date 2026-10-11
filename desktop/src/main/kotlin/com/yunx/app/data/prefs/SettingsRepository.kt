@@ -1,5 +1,6 @@
 package com.yunx.app.data.prefs
 
+import com.yunx.app.AppContext
 import com.yunx.app.data.download.DownloadPlatform
 import java.util.prefs.Preferences
 
@@ -131,6 +132,23 @@ class SettingsRepository {
         get() = prefs.getBoolean("download_full_sha256", false)
         set(value) {
             prefs.putBoolean("download_full_sha256", value)
+        }
+
+    /**
+     * 储存目录（设置 → 储存目录）：目录配置本身必须存在 Preferences 里（而不是数据目录里），
+     * 否则把数据目录搬走后就再也读不到「该去哪找数据」。**改动需重启生效**（启动时只读一次）。
+     */
+    var storageDbDir: String?
+        get() = prefs.get(AppContext.KEY_DB_DIR, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) prefs.remove(AppContext.KEY_DB_DIR) else prefs.put(AppContext.KEY_DB_DIR, value)
+        }
+
+    /** 缓存根目录（下载分片 / 合并临时文件 / JCEF 浏览器数据）；null = 默认 `<数据目录>/cache` */
+    var storageCacheDir: String?
+        get() = prefs.get(AppContext.KEY_CACHE_DIR, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) prefs.remove(AppContext.KEY_CACHE_DIR) else prefs.put(AppContext.KEY_CACHE_DIR, value)
         }
 
     /**

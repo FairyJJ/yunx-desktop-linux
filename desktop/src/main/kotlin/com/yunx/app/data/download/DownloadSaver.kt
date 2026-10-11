@@ -49,6 +49,13 @@ object DownloadSaver {
     private const val COPY_BUFFER_SIZE = 1 * 1024 * 1024
 
     /**
+     * 当前生效的下载保存目录：设置里的自定义目录优先，否则系统「下载」文件夹。
+     * 内置下载器与 Gopeed 引擎都走这里，保证「设置 → 储存目录 → 下载保存目录」对两者一致生效。
+     */
+    fun resolveSaveDir(custom: String?): File =
+        custom?.takeIf { it.isNotBlank() }?.let { File(it) } ?: DesktopActions.defaultDownloadDir
+
+    /**
      * 打开「直接向最终位置写入」的保存目的地（大文件下载主路径）。
      *
      * 与 [save] 的区别：不接收源文件、不自己做拷贝，由调用方边合并分片边写入、边删分片。

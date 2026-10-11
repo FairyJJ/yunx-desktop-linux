@@ -123,6 +123,8 @@ fun SettingsScreen(
     onExperimentalClick: () -> Unit,
     /** 打开「下载引擎」二级页（内置分片下载器 / 外部 Gopeed 引擎） */
     onDownloadEngineClick: () -> Unit,
+    /** 打开「储存目录」二级页（下载保存目录 / 下载缓存 / 数据库位置） */
+    onStorageClick: () -> Unit,
     backupManager: AuthBackupManager,
     /** 用应用内置下载器下载更新包；fallbackUrl 非空时作为镜像下载失败后的直连回退（URL + 文件名 + 回退直连） */
     onDownloadUpdateApk: (url: String, fileName: String, fallbackUrl: String?) -> Unit,
@@ -203,44 +205,13 @@ fun SettingsScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // 下载保存目录：系统目录选择器（桌面版为普通目录路径选择）
-        // 已自定义时卡片右侧内嵌「恢复默认」操作（不单独外露按钮）
+        // 储存目录（二级页）：下载保存目录 / 下载缓存目录 / 数据库位置
         SettingsItem(
             icon = Icons.Outlined.FolderOpen,
-            title = "下载保存目录",
-            description = downloadDirUri?.let { "已自定义：${DownloadSaver.safDirDisplay(it)}" }
-                ?: "系统默认 Download（点击自定义）",
-            onClick = {
-                // 原生目录选择器在独立线程打开，避免阻塞 UI 线程导致水波动画卡顿
-                scope.launch {
-                    val dir = withContext(Dispatchers.IO) { DesktopActions.pickDirectory() }
-                    if (dir != null) {
-                        settingsRepo.downloadDirUri = dir
-                        downloadDirUri = dir
-                        SnackbarController.show("下载保存目录已更新")
-                    }
-                }
-            },
-            trailing = if (downloadDirUri != null) {
-                {
-                    TextButton(
-                        onClick = {
-                            downloadDirUri = null
-                            settingsRepo.downloadDirUri = null
-                            SnackbarController.show("已恢复默认下载目录")
-                        },
-                        modifier = Modifier.padding(start = 8.dp)
-                    ) {
-                        Text(
-                            text = "恢复默认",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            } else {
-                null
-            }
+            title = "储存目录",
+            description = downloadDirUri?.let { "下载保存已自定义：${DownloadSaver.safDirDisplay(it)}" }
+                ?: "下载保存目录、下载缓存、数据库位置",
+            onClick = onStorageClick
         )
 
         Spacer(modifier = Modifier.height(8.dp))

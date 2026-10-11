@@ -961,10 +961,7 @@ class DownloadManager(
         platform != DownloadPlatform.GITHUB && engineEnabledProvider() && GopeedEngine.isInstalled()
 
     /** 引擎落盘基准目录：优先设置里的自定义下载目录，否则系统「下载」目录 */
-    private fun engineBaseDir(): File {
-        val custom = saveDirProvider()?.takeIf { it.isNotBlank() }
-        return if (custom != null) File(custom) else DesktopActions.defaultDownloadDir
-    }
+    private fun engineBaseDir(): File = DownloadSaver.resolveSaveDir(saveDirProvider())
 
     /** 新建引擎任务（enqueue 的引擎分流入口） */
     private suspend fun startViaEngine(

@@ -131,6 +131,7 @@ import com.yunx.app.ui.screens.DownloadScreen
 import com.yunx.app.ui.screens.DownloadEngineScreen
 import com.yunx.app.ui.screens.DriveScreen
 import com.yunx.app.ui.screens.ExperimentalFeaturesScreen
+import com.yunx.app.ui.screens.StorageDirectoryScreen
 import com.yunx.app.ui.screens.OnboardingScreen
 import com.yunx.app.ui.screens.ResolveScreen
 import com.yunx.app.ui.screens.SettingsScreen
@@ -205,6 +206,7 @@ fun MainScreen(
     var showBookmarks by rememberSaveable { mutableStateOf(false) }
     var showExperimental by rememberSaveable { mutableStateOf(false) }
     var showDownloadEngine by rememberSaveable { mutableStateOf(false) }
+    var showStorage by rememberSaveable { mutableStateOf(false) }
     var showAnnouncements by rememberSaveable { mutableStateOf(false) }
     /** 启动公告弹窗点「查看详情」时带进去的公告 id（null = 从图标进来先看列表） */
     var announcementDetailId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -953,6 +955,7 @@ fun MainScreen(
                             onSupportClick = { showSupport = true },
                             onExperimentalClick = { showExperimental = true },
                             onDownloadEngineClick = { showDownloadEngine = true },
+                            onStorageClick = { showStorage = true },
                             backupManager = backupManager,
                             onDownloadUpdateApk = { url, name, fallbackUrl ->
                                 scope.launch {
@@ -1084,6 +1087,20 @@ fun MainScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             DownloadEngineScreen(onBack = { showDownloadEngine = false })
+        }
+
+        // 储存目录：叠加覆盖层（二级页，从设置页进入）
+        AnimatedVisibility(
+            visible = showStorage,
+            enter = fadeIn(tween(220)) + scaleIn(tween(220), initialScale = 0.96f),
+            exit = fadeOut(tween(160)) + scaleOut(tween(160), targetScale = 0.96f),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            StorageDirectoryScreen(
+                onBack = { showStorage = false },
+                // 目录已改、新实例已拉起：直接退出本进程（走统一的淡出退出路径）
+                onRestartApp = onExitApplication
+            )
         }
 
         // 应用内公告：叠加覆盖层（列表 ↔ 详情在页面内部切换）

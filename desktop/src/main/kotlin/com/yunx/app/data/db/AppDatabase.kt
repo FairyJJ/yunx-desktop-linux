@@ -67,7 +67,8 @@ class AppDatabase private constructor(private val conn: Connection) {
 
         private fun open(): AppDatabase {
             Class.forName("org.sqlite.JDBC")
-            val dbFile = File(AppContext.dataDir, "yunx.db")
+            // 数据库目录可在「设置 → 储存目录」改（默认＝数据根目录）；启动时已由 AppContext 解析好
+            val dbFile = File(AppContext.dbDir, "yunx.db")
             dbFile.parentFile?.mkdirs()
 
             // 自愈：进程被强杀/崩溃后，WAL 的 -shm（共享内存索引）可能损坏或 mmap 失败
