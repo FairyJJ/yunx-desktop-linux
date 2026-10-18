@@ -264,7 +264,7 @@ fun ResolveScreen(
                                     val isDarkTheme = when (com.yunx.app.ui.theme.ThemeController.darkMode) {
                                         1 -> false
                                         2 -> true
-                                        else -> if (com.yunx.app.util.WindowsTitleBar.isWindows) {
+                                        else -> if (com.yunx.app.util.Platform.isWindows || com.yunx.app.util.Platform.isLinux) {
                                             com.yunx.app.util.WindowsTitleBar.systemIsDarkMode()
                                         } else {
                                             systemDark

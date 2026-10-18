@@ -1,0 +1,57 @@
+# Maintainer: jay <jay@localhost>
+# 云析 YunX-Desktop 的 Linux 移植版（自建包，非 AUR 官方）
+#
+# 说明：本 PKGBUILD 不重新编译 Kotlin（需要 Gradle + 网络拉依赖，不适合放进 makepkg 的
+# 离线构建环境），而是把 `:desktop:createDistributable` 产出的 app-image 原样装进 /opt。
+# app-image 自带 jlink 精简运行时，所以运行时不依赖系统 JDK。
+#
+# 构建：
+#   APPIMAGE=<app-image 绝对路径> makepkg -f
+#
+pkgname=yunx-desktop
+pkgver=1.2.9
+pkgrel=1
+pkgdesc="云析 YunX 桌面版（Linux 移植）：网盘分享链接解析与高速下载"
+arch=('x86_64')
+url="https://github.com/tidain/YunX-Desktop"
+license=('AGPL-3.0')
+depends=('gtk3' 'libxtst' 'libxrender' 'fontconfig' 'freetype2' 'nss' 'alsa-lib' 'libxkbcommon' 'libdrm' 'mesa')
+optdepends=(
+    'libnotify: 桌面通知与下载进度'
+    'systemd: systemd-inhibit 防止下载时休眠'
+    'nautilus: 在文件管理器中定位下载文件'
+)
+provides=('yunx-desktop')
+conflicts=('yunx-desktop-git')
+options=('!strip' '!debug')
+
+# app-image 目录（createDistributable 的产物），构建时用环境变量覆盖
+# 注意：PKGBUILD 位于 packaging/ 子目录，工程根目录是它的上一级
+_root="$(cd "$startdir/.." && pwd)"
+_appimage="${APPIMAGE:-$_root/desktop/build/compose/binaries/main/app/YunX-Desktop}"
+
+package() {
+    if [[ ! -x "$_appimage/bin/YunX-Desktop" ]]; then
+        error "找不到 app-image：$_appimage（先跑 :desktop:createDistributable）"
+        exit 1
+    fi
+
+    install -d "$pkgdir/opt/yunx-desktop"
+    cp -a "$_appimage/." "$pkgdir/opt/yunx-desktop/"
+
+    # 命令行入口
+    install -d "$pkgdir/usr/bin"
+    cat > "$pkgdir/usr/bin/yunx-desktop" <<'EOF'
+#!/bin/sh
+exec /opt/yunx-desktop/bin/YunX-Desktop "$@"
+EOF
+    chmod 755 "$pkgdir/usr/bin/yunx-desktop"
+
+    # 桌面项
+    install -Dm644 "$_root/packaging/yunx-desktop.desktop" \
+        "$pkgdir/usr/share/applications/yunx-desktop.desktop"
+
+    # 图标（源图 748×748，装到 256 档，桌面环境会自动缩放）
+    install -Dm644 "$_root/desktop/src/main/resources/icon.png" \
+        "$pkgdir/usr/share/icons/hicolor/256x256/apps/yunx-desktop.png"
+}

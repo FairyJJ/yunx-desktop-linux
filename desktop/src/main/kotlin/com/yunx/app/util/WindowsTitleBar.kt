@@ -131,11 +131,47 @@ object WindowsTitleBar {
      * 的 AppsUseLightTheme 值判断：0=深色，1=浅色，未配置时默认浅色。
      */
     fun systemIsDarkMode(): Boolean {
-        if (!isWindows) return false
+        if (!isWindows) {
+            // [Linux 移植] 原实现在非 Windows 直接返回 false，「跟随系统」永远落到浅色。
+            // Linux 桌面统一通过 gsettings / GTK_THEME 暴露深色偏好，这里补上。
+            return if (isLinux) linuxIsDarkMode() else false
+        }
         return runCatching {
             val key = "Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"
             val value = Advapi32Util.registryGetIntValue(WinReg.HKEY_CURRENT_USER, key, "AppsUseLightTheme")
             value == 0
         }.getOrDefault(false)
+    }
+
+    private val isLinux: Boolean by lazy {
+        System.getProperty("os.name", "").lowercase().contains("linux")
+    }
+
+    /**
+     * [Linux 移植] 判定系统是否深色：
+     * 1. `org.gnome.desktop.interface color-scheme`（GNOME 42+/KDE 也同步该键）→ prefer-dark / prefer-light
+     * 2. `gtk-theme` 名称含 dark
+     * 3. `GTK_THEME` 环境变量
+     * 任一命中即可；全都取不到时按浅色（与 Windows 读不到注册表时的默认一致）。
+     */
+    private fun linuxIsDarkMode(): Boolean {
+        fun gsettingsGet(key: String): String? = runCatching {
+            val p = ProcessBuilder("gsettings", "get", "org.gnome.desktop.interface", key)
+                .redirectErrorStream(true)
+                .start()
+            val out = p.inputStream.bufferedReader().readText().trim()
+            p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+            out.takeIf { p.exitValue() == 0 }
+        }.getOrNull()
+
+        gsettingsGet("color-scheme")?.let { v ->
+            if (v.contains("prefer-dark")) return true
+            if (v.contains("prefer-light") || v.contains("default")) return false
+        }
+        gsettingsGet("gtk-theme")?.let { v ->
+            if (v.contains("dark", ignoreCase = true)) return true
+        }
+        System.getenv("GTK_THEME")?.let { if (it.contains("dark", ignoreCase = true)) return true }
+        return false
     }
 }

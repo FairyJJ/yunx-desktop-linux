@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=云析
+Name[zh_CN]=云析
+GenericName=网盘分享链接解析与下载
+GenericName[zh_CN]=网盘分享链接解析与下载
+Comment=识别夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接并高速下载
+Comment[zh_CN]=识别夸克 / UC / 迅雷 / 百度 / 139 / 123 分享链接并高速下载
+Exec=/opt/yunx-desktop/bin/YunX-Desktop %U
+Icon=yunx-desktop
+Terminal=false
+Categories=Network;FileTransfer;Utility;
+Keywords=网盘;下载;夸克;UC;迅雷;百度;123;139;YunX;云析;
+StartupNotify=true
+StartupWMClass=com-yunx-app-MainKt

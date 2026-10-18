@@ -6,6 +6,21 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// ---- [Linux 移植] 宿主平台判定 ----
+// 原项目假定 Windows：JCEF 原生库写死 windows-amd64、托盘配色桥接层要求 C++ 编译器编译 dll、
+// jpackage 只产出 exe。这里统一在配置期判定宿主平台，后面各处据此分支。
+val hostOs: String = System.getProperty("os.name", "").lowercase()
+val hostArch: String = System.getProperty("os.arch", "").lowercase()
+val hostIsWindows = hostOs.contains("win")
+val hostIsLinux = hostOs.contains("linux")
+val hostIsAarch64 = hostArch.contains("aarch64") || hostArch.contains("arm64")
+
+fun jcefNativesPlatform(): String = when {
+    hostIsWindows -> if (hostIsAarch64) "windows-arm64" else "windows-amd64"
+    hostIsLinux -> if (hostIsAarch64) "linux-arm64" else "linux-amd64"
+    else -> if (hostIsAarch64) "macosx-arm64" else "macosx-amd64"
+}
+
 dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
@@ -38,7 +53,13 @@ dependencies {
 
     // 方案 B：内嵌 Chromium 浏览器（JCEF），jcefmaven 负责原生库装载
     implementation("me.friwi:jcefmaven:132.3.1")
-    implementation("me.friwi:jcef-natives-windows-amd64:jcef-1770317+cef-132.3.1+g144febe+chromium-132.0.6834.83")
+    // [Linux 移植] 原生库按宿主平台选择。原版硬编码 windows-amd64，在 Linux 上会因缺少
+    // libcef.so 而在登录页初始化失败（jcefmaven 虽有运行时下载回退，但预置同平台包可离线可用）。
+    // 版本串必须与 jcefmaven 1.2.9/132.3.1 严格一致，否则 JCEF 会报 API 不匹配。
+    implementation(
+        "me.friwi:jcef-natives-${jcefNativesPlatform()}:" +
+            "jcef-1770317+cef-132.3.1+g144febe+chromium-132.0.6834.83"
+    )
 
     testImplementation(kotlin("test"))
     testImplementation("junit:junit:4.13.2")
@@ -106,28 +127,38 @@ fun findMsvcVcvars(): File? {
     return null
 }
 
-val compileDarkMode by tasks.registering(Exec::class) {
-    val vcvars = findMsvcVcvars()
-    inputs.file(darkModeSrc)
-    outputs.file(darkModeOut)
-    doFirst {
-        nativeOutDir.mkdirs()
+// [Linux 移植] darkmode.dll 是 Windows uxtheme 的桥接层（托盘原生菜单配色），
+// 非 Windows 宿主没有对应实现 —— 注册成空任务，保持依赖图不变。
+val compileDarkMode: TaskProvider<out Task> = if (hostIsWindows) {
+    tasks.register<Exec>("compileDarkMode") {
+        val vcvars = findMsvcVcvars()
+        inputs.file(darkModeSrc)
+        outputs.file(darkModeOut)
+        doFirst {
+            nativeOutDir.mkdirs()
+        }
+        if (vcvars != null) {
+            commandLine(
+                "cmd", "/c",
+                "call \"${vcvars.absolutePath}\" >nul && " +
+                    "cl /nologo /utf-8 /LD \"${darkModeSrc.absolutePath}\" " +
+                    "/Fe:\"${darkModeOut.absolutePath}\" " +
+                    "/Fo:\"${nativeOutDir.absolutePath}\\\\\" " +
+                    "/link /NOENTRY kernel32.lib user32.lib"
+            )
+        } else {
+            // 回退 MinGW
+            commandLine(
+                "g++", "-shared", "-o", darkModeOut.absolutePath,
+                darkModeSrc.absolutePath, "-lkernel32", "-luser32"
+            )
+        }
     }
-    if (vcvars != null) {
-        commandLine(
-            "cmd", "/c",
-            "call \"${vcvars.absolutePath}\" >nul && " +
-                "cl /nologo /utf-8 /LD \"${darkModeSrc.absolutePath}\" " +
-                "/Fe:\"${darkModeOut.absolutePath}\" " +
-                "/Fo:\"${nativeOutDir.absolutePath}\\\\\" " +
-                "/link /NOENTRY kernel32.lib user32.lib"
-        )
-    } else {
-        // 回退 MinGW
-        commandLine(
-            "g++", "-shared", "-o", darkModeOut.absolutePath,
-            darkModeSrc.absolutePath, "-lkernel32", "-luser32"
-        )
+} else {
+    tasks.register("compileDarkMode") {
+        doLast {
+            logger.lifecycle("[YunX] 非 Windows 宿主：跳过 darkmode.dll（Linux 用 GTK/Compose 原生对话框，无需该桥接层）")
+        }
     }
 }
 
@@ -135,14 +166,15 @@ val compileDarkMode by tasks.registering(Exec::class) {
 tasks.withType<JavaExec> {
     dependsOn(compileDarkMode)
     val jvmBin = File(System.getProperty("java.home"), "bin").absolutePath
-    systemProperty("java.library.path", "${nativeOutDir.absolutePath};$jvmBin")
+    // [Linux 移植] 路径分隔符原为 Windows 的 ';'，Linux 下必须是 ':'，否则整串被当成一个路径
+    systemProperty("java.library.path", "${nativeOutDir.absolutePath}${File.pathSeparator}$jvmBin")
 }
 
 // 收集运行时依赖 jar 路径（供便携版 app-image 打包）
 tasks.register("printRuntimeClasspath") {
     doLast {
         val cp = configurations.runtimeClasspath.get().files
-            .joinToString(";") { it.absolutePath }
+            .joinToString(File.pathSeparator) { it.absolutePath }
         println("RUNTIME_CP=$cp")
     }
 }
@@ -157,12 +189,31 @@ compose.desktop {
     application {
         mainClass = "com.yunx.app.MainKt"
         nativeDistributions {
-            targetFormats(TargetFormat.Exe)
+            // [Linux 移植] 原版写死 TargetFormat.Exe：在 Linux 上跑 packageDistributionForCurrentOS
+            // 会直接报 "target format Exe is not supported on linux"。按宿主平台选。
+            targetFormats(
+                *when {
+                    hostIsWindows -> listOf(TargetFormat.Exe)
+                    hostIsLinux -> listOf(TargetFormat.Deb)
+                    else -> listOf(TargetFormat.Dmg)
+                }.toTypedArray()
+            )
             // sqlite-jdbc 通过反射加载 java.sql.Driver，jlink 自动检测不到，必须显式声明
             modules("java.sql", "java.naming")
             // 每用户安装（%LOCALAPPDATA%\Programs），无需管理员权限
-            windows {
-                perUserInstall = true
+            if (hostIsWindows) {
+                windows {
+                    perUserInstall = true
+                }
+            }
+            if (hostIsLinux) {
+                linux {
+                    packageName = "yunx-desktop"
+                    // .deb 元数据（本项目最终以 pacman 分发，这两项只为 packageDeb 能跑通）
+                    debMaintainer = "jay <jay@localhost>"
+                    appCategory = "Network"
+                    menuGroup = "Network"
+                }
             }
             packageName = "YunX-Desktop"
             packageVersion = appVersion

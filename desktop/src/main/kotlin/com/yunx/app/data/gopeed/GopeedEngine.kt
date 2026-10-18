@@ -63,7 +63,8 @@ object GopeedEngine {
 
     private const val TAG = "GopeedEngine"
     private const val DIR_NAME = "gopeed"
-    private const val EXE_NAME = "gopeed.exe"
+    /** [Linux 移植] 可执行文件名随平台：Windows 为 gopeed.exe，Linux 为 gopeed */
+    private val EXE_NAME: String = GopeedPlatform.current().executableName
     private const val BIN_DIR_NAME = "bin"
 
     /** 引擎 HTTP 协议的默认 UA（与 gopeed 自带默认一致）：任务未自带 UA 时使用，避免空 UA 被 CDN 限速 */
@@ -173,10 +174,19 @@ object GopeedEngine {
                 }
             }
             if (!found) {
-                throw IllegalStateException("压缩包里没有找到 $EXE_NAME（请使用 Gopeed 官方 windows-amd64 包）")
+                throw IllegalStateException(
+                    "压缩包里没有找到 $EXE_NAME（应使用 Gopeed 官方 ${
+                        GopeedPlatform.current().let { "${it.system}-${it.architecture}" }
+                    } 包）"
+                )
             }
         } else {
             archive.copyTo(target, overwrite = true)
+        }
+        // [Linux 移植] 从 zip 解出的二进制默认没有执行位（Windows 不关心，Linux exec 会 EACCES）
+        if (!com.yunx.app.util.Platform.isWindows) {
+            val marked = target.setExecutable(true, false)
+            if (!marked) Log.w(TAG, "设置可执行位失败：${target.absolutePath}（引擎可能无法启动）")
         }
         lastError = null
         _state.value = State.INSTALLED

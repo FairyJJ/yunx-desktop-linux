@@ -18,7 +18,6 @@ import com.yunx.app.ui.jcef.JcefHolder
 import com.yunx.app.ui.theme.ComposeEmptyActivityTheme
 import com.yunx.app.util.DarkMode
 import com.yunx.app.util.TrayManager
-import com.yunx.app.util.Win32PopupMenu
 import com.yunx.app.util.WindowFx
 import androidx.compose.ui.graphics.toComposeImageBitmap
 
@@ -105,6 +104,9 @@ fun main(args: Array<String>) {
         var mainWindow: java.awt.Frame? = null
         // 关闭请求信号：点击窗口 X 时置 true，由 MainScreen 决定退出 / 托盘 / 询问
         var closeRequested by remember { mutableStateOf(false) }
+        // [Linux 移植] 托盘是否真的装上（GNOME 无 AppIndicator 扩展时为 false）。
+        // 为 false 时「最小化到托盘」必须退化为最小化到任务栏，否则窗口隐藏后没有入口叫回来。
+        var trayInstalled by remember { mutableStateOf(false) }
         // 抑制关闭请求：程序化隐藏窗口（最小化到托盘）时为 true，避免 onCloseRequest 重跑导致弹窗闪烁
         var suppressCloseRequest by remember { mutableStateOf(false) }
         // 启动器闪屏模式（launcher 注入 YUNXPC_SPLASH=1）：窗口可见性由 Compose 控制，
@@ -136,21 +138,19 @@ fun main(args: Array<String>) {
                     (window as? java.awt.Frame)?.let { WindowFx.scheduleFadeIn(it) }
                 }
             }
-            // 系统托盘：JNA 调 Win32 TrackPopupMenu（原生菜单，中文正常，暗色跟随系统）
+            // 系统托盘：Windows 用 JNA 原生菜单，Linux 用 AWT PopupMenu（由组件内部按平台分派）
             androidx.compose.runtime.LaunchedEffect(Unit) {
+                val menu = listOf(
+                    "显示主窗口" to 1,
+                    "-" to 0,
+                    "退出" to 2
+                )
                 TrayManager.loadTrayIcon()?.let { icon ->
-                    TrayManager.install(
+                    trayInstalled = TrayManager.install(
                         image = icon,
                         onLeftClick = { showMainWindowFromTray(mainWindow) },
-                        onRightClick = { x, y ->
-                            val cmd = Win32PopupMenu.show(
-                                items = listOf(
-                                    "显示主窗口" to 1,
-                                    "-" to 0,
-                                    "退出" to 2
-                                ),
-                                x = x, y = y
-                            )
+                        menuItems = menu,
+                        onMenuCommand = { cmd ->
                             when (cmd) {
                                 1 -> showMainWindowFromTray(mainWindow)
                                 2 -> {
@@ -173,13 +173,21 @@ fun main(args: Array<String>) {
                         else exitApplication()
                     },
                     onMinimizeToTray = {
-                        // 隐藏窗口前先抑制关闭请求，避免 Compose 把 hide 当作 close 重跑逻辑
-                        suppressCloseRequest = true
-                        mainWindow?.isVisible = false
-                        // 延迟解除抑制（确保 hide 事件已消费完毕）
-                        scope.launch {
-                            kotlinx.coroutines.delay(50)
-                            suppressCloseRequest = false
+                        // [Linux 移植] 没有托盘宿主时不能隐藏窗口：改为普通最小化（任务栏可恢复）
+                        if (!trayInstalled) {
+                            mainWindow?.let { w ->
+                                w.extendedState = w.extendedState or java.awt.Frame.ICONIFIED
+                            }
+                            TrayManager.showNotification("云析", "已最小化到任务栏，下载仍在后台继续")
+                        } else {
+                            // 隐藏窗口前先抑制关闭请求，避免 Compose 把 hide 当作 close 重跑逻辑
+                            suppressCloseRequest = true
+                            mainWindow?.isVisible = false
+                            // 延迟解除抑制（确保 hide 事件已消费完毕）
+                            scope.launch {
+                                kotlinx.coroutines.delay(50)
+                                suppressCloseRequest = false
+                            }
                         }
                     }
                 )

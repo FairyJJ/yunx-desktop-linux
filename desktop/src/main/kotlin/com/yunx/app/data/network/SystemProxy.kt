@@ -53,13 +53,86 @@ object SystemProxy {
     private val isWindows: Boolean
         get() = System.getProperty("os.name", "").lowercase().contains("win")
 
+    private val isLinux: Boolean
+        get() = System.getProperty("os.name", "").lowercase().contains("linux")
+
+    // ---------------------------------------------------------------------------------------------
+    // [Linux 移植] Linux 系统代理解析
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * Linux 系统代理：两级来源
+     * 1. 环境变量 `https_proxy` / `http_proxy` / `all_proxy`（大小写都认）——终端启动时最常见；
+     * 2. GNOME gsettings `org.gnome.system.proxy`（mihomo-party / 系统设置里开「系统代理」写的就是这里）。
+     * gsettings 的 mode=auto 即 PAC，本实现不支持，明确返回 [Inspect.PacUnsupported]。
+     */
+    private fun inspectLinux(): Inspect {
+        val envKey = listOf("https_proxy", "HTTPS_PROXY", "http_proxy", "HTTP_PROXY", "all_proxy", "ALL_PROXY")
+            .firstOrNull { !System.getenv(it).isNullOrBlank() }
+        if (envKey != null) {
+            val raw = System.getenv(envKey).orEmpty()
+            val parsed = parseProxyUrl(raw)
+            if (parsed != null) {
+                Log.i(TAG, "环境变量代理生效（$envKey=$raw）：${parsed.first}:${parsed.second}")
+                return Inspect.Proxy(parsed.first, parsed.second)
+            }
+            Log.w(TAG, "环境变量 $envKey=$raw 无法解析，继续尝试 gsettings")
+        }
+
+        val mode = gsettings("org.gnome.system.proxy", "mode").orEmpty()
+        if (mode.contains("auto")) {
+            Log.w(TAG, "GNOME 系统代理为自动模式（PAC），本应用不支持，按直连处理")
+            return Inspect.PacUnsupported
+        }
+        if (mode.contains("manual")) {
+            // 优先 http 段（OkHttp 走 HTTP CONNECT）；socks 段仅在 http 未配置时使用
+            for (schema in listOf("http", "socks")) {
+                val host = gsettings("org.gnome.system.proxy.$schema", "host").orEmpty().trim('\'', ' ')
+                val port = gsettings("org.gnome.system.proxy.$schema", "port").orEmpty().trim().toIntOrNull() ?: 0
+                if (host.isNotBlank() && port in 1..65535) {
+                    Log.i(TAG, "GNOME 系统代理生效（$schema）：$host:$port")
+                    return Inspect.Proxy(host, port)
+                }
+            }
+            Log.w(TAG, "GNOME 系统代理为手动模式但 host/port 为空，按直连处理")
+            return Inspect.Direct
+        }
+        Log.i(TAG, "未检测到系统代理（环境变量与 gsettings 均为空/直连）")
+        return Inspect.Direct
+    }
+
+    /** 读一个 gsettings 标量并去掉引号；读不到返回 null */
+    private fun gsettings(schema: String, key: String): String? = runCatching {
+        val p = ProcessBuilder("gsettings", "get", schema, key)
+            .redirectErrorStream(true)
+            .start()
+        val out = p.inputStream.bufferedReader().readText().trim()
+        p.waitFor(2, java.util.concurrent.TimeUnit.SECONDS)
+        out.takeIf { p.exitValue() == 0 }
+    }.getOrNull()
+
+    /** 解析 `http://127.0.0.1:7890` / `socks5://host:port` / `host:port` 为 host+port */
+    private fun parseProxyUrl(raw: String): Pair<String, Int>? {
+        val text = raw.trim().removePrefix("export ").trim().trim('"', '\'')
+        if (text.isBlank()) return null
+        val withoutScheme = text.substringAfter("://", text)
+        val hostPort = withoutScheme.substringAfterLast('@')
+        val host = hostPort.substringBeforeLast(':', "")
+        val port = hostPort.substringAfterLast(':', "").toIntOrNull() ?: return null
+        if (host.isBlank() || port !in 1..65535) return null
+        return host.trim('[', ']') to port
+    }
+
     /**
      * 读取本机系统代理并解析。返回 [Inspect.Proxy] 表示可用，其余一律按直连处理。
      * 调用方据此装配全局代理；本函数只读一次注册表。
      */
     fun inspect(): Inspect {
+        // [Linux 移植] 原实现只认 Windows 注册表，Linux 直接判直连 —— 但本机通常跑 mihomo/OpenClash，
+        // 系统代理是真实存在的。Linux 侧按「环境变量 → GNOME gsettings」两级解析。
+        if (isLinux) return inspectLinux()
         if (!isWindows) {
-            Log.i(TAG, "非 Windows 平台，不支持系统代理，按直连处理")
+            Log.i(TAG, "非 Windows/Linux 平台，不支持系统代理，按直连处理")
             return Inspect.Unavailable
         }
         val enable = readInt("ProxyEnable") ?: 0

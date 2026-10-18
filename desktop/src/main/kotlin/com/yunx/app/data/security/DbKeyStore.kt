@@ -35,7 +35,15 @@ enum class DbEncryptionLevel(val id: String, val label: String) {
     STRICTEST("strictest", "严格");
 
     /** 该档位在当前系统上是否可用（严格档需要 SQLCipher 原生库，暂未支持） */
-    val isSupported: Boolean get() = this != STRICTEST
+    val isSupported: Boolean
+        get() = when (this) {
+            STRICTEST -> false
+            // [Linux 移植]「较为严格」用 Windows DPAPI（CryptProtectData，绑定登录用户）包裹密钥。
+            // Linux 上没有等价实现（要接 gnome-keyring/kwallet 的 Secret Service），
+            // 因此标记为不可用 —— 界面会置灰，避免用户切过去后解不开自己的凭证。
+            STRICT -> System.getProperty("os.name", "").orEmpty().lowercase().contains("win")
+            else -> true
+        }
 
     /** 密钥是否绑定本机（换机器后凭证将无法解密，需重新登录） */
     val isMachineBound: Boolean get() = this == NORMAL || this == STRICT
@@ -207,12 +215,22 @@ object DbKeyStore {
         })
     }
 
-    /** Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography），普通用户可读 */
+    /** Windows MachineGuid（HKLM\SOFTWARE\Microsoft\Cryptography），普通用户可读；Linux 用 machine-id */
     private fun machineGuid(): String? = runCatching {
-        Advapi32Util.registryGetStringValue(
-            WinReg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", "MachineGuid"
-        ).takeIf { it.isNotBlank() }
-    }.getOrNull()
+        if (System.getProperty("os.name").orEmpty().lowercase().contains("win")) {
+            Advapi32Util.registryGetStringValue(
+                WinReg.HKEY_LOCAL_MACHINE, "SOFTWARE\\Microsoft\\Cryptography", "MachineGuid"
+            )
+        } else {
+            // [Linux 移植] /etc/machine-id 是 systemd 生成的稳定机器标识，等价于 Windows MachineGuid；
+            // dbus 的 machine-id 是兼容旧路径。两者都读不到时退回主机名+用户名（见 machineFingerprint）
+            listOf("/etc/machine-id", "/var/lib/dbus/machine-id", "/var/db/dbus/machine-id")
+                .map(::File)
+                .firstOrNull { it.isFile }
+                ?.readText()
+                ?.trim()
+        }
+    }?.getOrNull()?.takeIf { it.isNotBlank() }
 
     /** 较为严格档：Windows DPAPI（CryptProtectData，绑定当前登录用户） */
     private fun wrapDpapi(key: ByteArray): String {

@@ -250,7 +250,8 @@ fun ComposeEmptyActivityTheme(
         1 -> false
         2 -> true
         else ->
-            if (com.yunx.app.util.WindowsTitleBar.isWindows) {
+            // [Linux 移植] 原来只认 Windows；Linux 同样能通过 gsettings 读系统深色偏好
+            if (com.yunx.app.util.Platform.isWindows || com.yunx.app.util.Platform.isLinux) {
                 com.yunx.app.util.WindowsTitleBar.systemIsDarkMode()
             } else {
                 darkTheme
