@@ -56,3 +56,9 @@ yunx_log_*.txt
 #     它来自 material 1.14.0 AAR 解包，Maven 上无同名坐标，必须随仓库提交。
 # gradle/wrapper/gradle-wrapper.jar + gradlew + gradlew.bat —— Gradle Wrapper，必须提交。
 # gradle.properties / settings.gradle.kts / build.gradle.kts —— 构建配置，必须提交。
+
+# ---- 本仓库打包产物（Release 附件，不入库）----
+release-assets/
+packaging/pkg/
+packaging/src/
+packaging/*.pkg.tar.zst

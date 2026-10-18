@@ -1,5 +1,7 @@
-# Maintainer: jay <jay@localhost>
+# Maintainer: FairyJJ <https://github.com/FairyJJ>
 # 云析 YunX-Desktop 的 Linux 移植版（自建包，非 AUR 官方）
+# 上游：tidain/YunX-Desktop（AGPL-3.0）→ 本仓库 FairyJJ/yunx-desktop-linux
+# 许可证：AGPL-3.0，分发时须提供对应源码并保留协议与修改声明（见 ../NOTICE）
 #
 # 说明：本 PKGBUILD 不重新编译 Kotlin（需要 Gradle + 网络拉依赖，不适合放进 makepkg 的
 # 离线构建环境），而是把 `:desktop:createDistributable` 产出的 app-image 原样装进 /opt。
@@ -13,7 +15,7 @@ pkgver=1.2.9
 pkgrel=1
 pkgdesc="云析 YunX 桌面版（Linux 移植）：网盘分享链接解析与高速下载"
 arch=('x86_64')
-url="https://github.com/tidain/YunX-Desktop"
+url="https://github.com/FairyJJ/yunx-desktop-linux"
 license=('AGPL-3.0')
 depends=('gtk3' 'libxtst' 'libxrender' 'fontconfig' 'freetype2' 'nss' 'alsa-lib' 'libxkbcommon' 'libdrm' 'mesa')
 optdepends=(

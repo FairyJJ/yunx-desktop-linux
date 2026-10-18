@@ -1,0 +1,84 @@
+YunX（云析）— Linux 桌面移植
+===============================================================================
+
+本仓库是下列项目的衍生作品（modified version），并非原始项目：
+
+  YunX（Android 版）
+    Copyright (C) 2026 CYQawa
+    https://github.com/CYQawa/YunX
+    License: GNU AGPL-3.0
+
+  YunX-Desktop（Windows 桌面移植版，v1.2.9）
+    Copyright (C) 2026 tidain
+    https://github.com/tidain/YunX-Desktop
+    License: GNU AGPL-3.0
+
+  Linux 移植修改（2026-10-18 起）
+    Copyright (C) 2026 FairyJJ
+    https://github.com/FairyJJ/yunx-desktop-linux
+
+修改声明
+------------------------------------------------------------------------------
+
+本仓库自 2026-10-18 起由 FairyJJ 修改，目的是让上游 Windows 桌面版能在
+Linux（x86_64 / X11 + XWayland）上构建与运行。
+
+修改范围（逐文件清单见 PORT-LINUX.md）：
+
+  * desktop/build.gradle.kts          —— JCEF 原生库按平台选择、跳过 darkmode.dll
+                                         构建、java.library.path 用平台分隔符、
+                                         jpackage 目标格式按平台选择
+  * util/Platform.kt（新增）           —— 平台判定与 Linux 侧统一入口
+  * util/TrayManager.kt               —— 托盘菜单改为 AWT PopupMenu
+  * util/DesktopActions.kt            —— 改用 xdg-open / FileManager1
+  * util/WindowsKeepAwake.kt          —— 改用 systemd-inhibit
+  * util/WindowsToastNotifier.kt      —— 改用 notify-send
+  * util/WindowsTitleBar.kt           —— 系统暗色改读 gsettings
+  * data/gopeed/GopeedPlatform.kt（新增）
+  * data/gopeed/GopeedKernelProvisioner.kt · GopeedEngine.kt
+  * data/security/DbKeyStore.kt       —— 机器指纹改用 /etc/machine-id
+  * data/network/SystemProxy.kt       —— 环境变量 + gsettings
+  * Main.kt · ui/theme/Theme.kt · ui/screens/ResolveScreen.kt —— 平台分派
+  * packaging/（新增）                 —— PKGBUILD 与 .desktop，Arch 打包
+  * gradle.properties                  —— 调整 JVM 参数以适配 Linux 构建
+  * gradlew / gradlew.bat（新增）       —— 补齐 Gradle Wrapper 脚本（上游仅有 wrapper jar）
+
+未修改：各网盘解析器、下载引擎协议、UI 布局与业务逻辑。
+
+本程序是自由软件：你可以依据自由软件基金会发布的 GNU Affero 通用公共许可证
+（第 3 版或你选择的任何更新版本）条款重新分发和/或修改它。
+
+本程序分发时希望它有用，但不附带任何担保，甚至不包含适销性或特定用途适用性的
+默示担保。详见 GNU Affero 通用公共许可证。
+
+你应当已随本程序收到一份 GNU Affero 通用公共许可证副本；若没有，见
+<https://www.gnu.org/licenses/agpl-3.0.html>。本仓库根目录 LICENSE 即该协议全文。
+
+对应源码
+------------------------------------------------------------------------------
+
+每个 Release 的二进制均由本仓库同一 tag 的源码构建，构建脚本、桌面项与
+PKGBUILD 全部包含在仓库内，GitHub 同时提供该 tag 的 Source code (zip/tar.gz)。
+因此「对应源码」= 该 Release tag 对应的完整仓库，无需额外书面索取。
+
+分发约束（沿用上游声明）
+------------------------------------------------------------------------------
+
+  * 本项目完全免费开源，任何形式的收费下载、倒卖均属欺诈；
+  * 不接受任何形式的付费授权、商业分发；
+  * 使用本项目下载的内容，版权归原权利人所有，使用风险自负。
+
+随二进制分发的第三方组件（及其协议）
+------------------------------------------------------------------------------
+
+  * Chromium Embedded Framework / JCEF — BSD-3-Clause
+  * JetBrains Compose Multiplatform / Kotlin — Apache-2.0
+  * AndroidX / Google material-color-utilities — Apache-2.0
+  * OkHttp、sqlite-jdbc、multiplatform-markdown-renderer — Apache-2.0
+  * OpenJDK 精简运行时（jlink 生成，见 /opt/yunx-desktop/lib 内 legal/）— GPL-2.0 WITH Classpath-exception-2.0
+  * JNA — Apache-2.0 / LGPL-2.1（双许可）
+
+未随本仓库或安装包分发的组件：
+
+  * Gopeed（GPL-3.0）—— 下载内核，由程序运行时从 GopeedLab/gopeed 官方 Release
+    下载到用户数据目录，不由本项目再分发。
