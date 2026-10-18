@@ -2,6 +2,7 @@
 
 - **日期**：2026-10-18
 - **上游**：`tidain/YunX-Desktop` v1.2.9（Windows 桌面移植版，AGPL-3.0）
+- **发布仓库**：`FairyJJ/yunx-desktop-linux`（<https://github.com/FairyJJ/yunx-desktop-linux>，tag `v1.2.9-linux.1`）
 - **目标机**：EndeavourOS / Arch 系，GNOME Wayland，x86_64
 - **工作副本**：`/home/jay/WorkBuddy/2026-10-17-08-56-35/yunx-linux`
 - **安装包**：`~/.cache/wb-pkgs/yunx-desktop-1.2.9-1-x86_64.pkg.tar.zst`（258 M）

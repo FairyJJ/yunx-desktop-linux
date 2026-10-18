@@ -13,7 +13,7 @@
 [![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Compose](https://img.shields.io/badge/Compose%20Multiplatform-Desktop-4285F4?style=flat-square&logo=jetpackcompose&logoColor=white)](https://www.jetbrains.com/lp/compose-multiplatform/)
 
-[下载](../../releases/latest) · [安装](#安装) · [Linux 平台实现](#linux-平台实现) · [已知限制](#已知限制) · [从源码构建](docs/BUILD-LINUX.md) · [改动清单](PORT-LINUX.md)
+[下载最新版](https://github.com/FairyJJ/yunx-desktop-linux/releases/latest) · [安装](#安装) · [Linux 平台实现](#linux-平台实现) · [已知限制](#已知限制) · [从源码构建](docs/BUILD-LINUX.md) · [改动清单](PORT-LINUX.md)
 
 </div>
 
